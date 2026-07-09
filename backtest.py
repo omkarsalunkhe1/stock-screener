@@ -132,6 +132,91 @@ def signal_asof(df: pd.DataFrame, n_candles: int, index_close: pd.Series,
     }
 
 
+PULLBACK = {
+    "event_lookback": 10,    # bullish volume event within this many sessions
+    "event_vr":       1.5,   # event-day volume vs its own 20d average
+    "ma20_lo":        -1.5,  # entry zone: close distance from MA20 (%)
+    "ma20_hi":         3.0,
+    "min_off_high":    1.5,  # must be at least this far off the post-event high
+    "rsi_lo":         40,    # healthy-pullback RSI band
+    "rsi_hi":         62,
+}
+
+
+def signal_pullback_asof(df: pd.DataFrame, n_candles: int,
+                         index_close: pd.Series, filters: dict) -> "dict | None":
+    """Pullback-to-MA20 entry: same quality DNA as signal_asof, opposite timing.
+
+    Instead of buying the volume-surge day, require:
+      1. a bullish volume event (>= event_vr x 20d avg, up close) within the
+         last event_lookback sessions — proof the interest is real;
+      2. price has since pulled back >= min_off_high % from the post-event
+         high into the MA20 zone;
+      3. trend intact: close above MA50, MA20 rising vs 5 sessions ago;
+      4. a green close today (reversal cue, not a falling knife);
+      5. RSI in the healthy-pullback band;
+      6. the production volatility gate (3x ATR target >= min_target_pct).
+
+    The surge-tuned min_score gate is NOT applied — pullback days score low
+    on volume/momentum by construction; structure replaces the score. Cheap
+    structural checks run before compute_indicators so an every-session
+    scan stays fast.
+    """
+    window = df.iloc[:n_candles].tail(WARMUP)
+    if len(window) < 60:
+        return None
+    c = window["close"].values; o = window["open"].values
+    h = window["high"].values;  v = window["volume"].values
+
+    if c[-1] <= o[-1]:                                        # 4. green close
+        return None
+    ma20 = c[-20:].mean()
+    dist = (c[-1] - ma20) / ma20 * 100
+    if not (PULLBACK["ma20_lo"] <= dist <= PULLBACK["ma20_hi"]):   # 2. zone
+        return None
+    if len(c) < 50 or c[-1] < c[-50:].mean():                 # 3. above MA50
+        return None
+    if c[-20:].mean() <= c[-25:-5].mean():                    # 3. MA20 rising
+        return None
+
+    event_i = None                                            # 1. recent event
+    for i in range(len(c) - 1 - PULLBACK["event_lookback"], len(c) - 1):
+        if i < 21:
+            continue
+        avg = v[i - 20:i].mean()
+        if avg > 0 and v[i] / avg >= PULLBACK["event_vr"] and c[i] > c[i - 1]:
+            event_i = i                                       # latest event wins
+    if event_i is None:
+        return None
+    post_high = h[event_i:].max()
+    if (post_high / c[-1] - 1) * 100 < PULLBACK["min_off_high"]:   # 2. pulled back
+        return None
+
+    ind = compute_indicators(window)
+    if not (PULLBACK["rsi_lo"] <= ind["rsi"] <= PULLBACK["rsi_hi"]):   # 5. RSI
+        return None
+    if index_close is not None and len(index_close) > 21:
+        ind["rs_nifty_5d"]  = round(ind["momentum_5d"]  - calc_momentum(index_close, 5),  2)
+        ind["rs_nifty_20d"] = round(ind["momentum_20d"] - calc_momentum(index_close, 20), 2)
+    scoring = score_stock(ind, filters)
+    if scoring["target_pct"] < filters.get("min_target_pct", 5.0):     # 6. volatility
+        return None
+
+    pa = detect_price_action(window)
+    return {
+        "score":      min(130, scoring["score"] + pa["pa_score"]),
+        "base_score": scoring["score"],
+        "target_pct": scoring["target_pct"],
+        "sl_pct":     scoring["sl_pct"],
+        "rsi":        ind["rsi"],
+        "vol_ratio":  ind["volume_ratio"],
+        "rs20":       ind.get("rs_nifty_20d"),
+    }
+
+
+SIGNAL_FNS = {"surge": signal_asof, "pullback": signal_pullback_asof}
+
+
 # ---------------------------------------------------------------------------
 # Trade simulation — production exit rules on daily bars
 # ---------------------------------------------------------------------------
@@ -215,7 +300,8 @@ def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
                  every: int = 5, max_hold: int = 10, top: int = 0,
                  rs_min: "float | None" = None, regime_gate: bool = False,
                  tgt_mult: float = 3.0, sl_mult: float = 1.5,
-                 partial_book: float = 0.0) -> list:
+                 partial_book: float = 0.0, entry: str = "surge",
+                 cooldown: int = 0) -> list:
     """Scan every `every` sessions on the index calendar; simulate signals.
 
     Experiment knobs (defaults reproduce production behaviour):
@@ -225,13 +311,19 @@ def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
         sl_mult    selection still uses the production 3x/1.5x volatility
                    gate, so all variants trade the same signal set)
       partial_book book half at +X% and move the stop to breakeven
+      entry        "surge" (production) or "pullback" (signal_pullback_asof);
+                   pullback triggers are day-specific — scan with every=1
+      cooldown     skip a symbol for N sessions after taking its signal
+                   (prevents clustered re-entries when every=1)
     """
+    sig_fn = SIGNAL_FNS[entry]
     idx_dates = index_df["date"].values
     idx_close = index_df["close"]
     # candle-count position of each symbol's dates on a common axis
     sym_dates = {s: d["date"].values for s, d in hist.items()}
 
     trades = []
+    last_taken: dict = {}
     scan_points = range(WARMUP, len(idx_dates) - 1, every)
     for k in scan_points:
         t = idx_dates[k]
@@ -245,7 +337,9 @@ def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
             n = int(np.searchsorted(sym_dates[sym], t, side="right"))
             if n < WARMUP // 2 or n >= len(df):     # need history AND a next bar
                 continue
-            sig = signal_asof(df, n, idx_slice, filters)
+            if cooldown and sym in last_taken and n - last_taken[sym] < cooldown:
+                continue
+            sig = sig_fn(df, n, idx_slice, filters)
             if sig is None:
                 continue
             if rs_min is not None and (sig["rs20"] is None or sig["rs20"] < rs_min):
@@ -255,6 +349,8 @@ def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
         cohort.sort(key=lambda s: s["score"], reverse=True)
         if top:
             cohort = cohort[:top]
+        for sig in cohort:
+            last_taken[sig["symbol"]] = sig["n"]
         for sig in cohort:
             atr_pct = sig["target_pct"] / 3.0       # production target is 3x ATR
             tp, sp = atr_pct * tgt_mult, atr_pct * sl_mult
@@ -346,6 +442,10 @@ def main():
     ap.add_argument("--sl-mult", type=float, default=1.5, help="stop ATR multiple")
     ap.add_argument("--partial-book", type=float, default=0.0,
                     help="book half at +X%% and move stop to breakeven (0 = off)")
+    ap.add_argument("--entry", choices=sorted(SIGNAL_FNS), default="surge",
+                    help="entry style; pullback needs --every 1")
+    ap.add_argument("--cooldown", type=int, default=0,
+                    help="sessions to skip a symbol after taking its signal")
     ap.add_argument("--refresh", action="store_true", help="refetch cached history")
     ap.add_argument("--out", default="", help="write trades CSV to this path")
     args = ap.parse_args()
@@ -370,11 +470,14 @@ def main():
                           every=args.every, max_hold=args.max_hold, top=args.top,
                           rs_min=args.rs_min, regime_gate=args.regime_gate,
                           tgt_mult=args.tgt_mult, sl_mult=args.sl_mult,
-                          partial_book=args.partial_book)
+                          partial_book=args.partial_book, entry=args.entry,
+                          cooldown=args.cooldown)
 
     label = (f"{args.universe}, {args.years:g}y, every {args.every} sessions, "
              f"min_score {args.min_score}, vol>={args.min_vol}x, hold<={args.max_hold}")
     extras = []
+    if args.entry != "surge":   extras.append(f"{args.entry} entry")
+    if args.cooldown:           extras.append(f"cooldown {args.cooldown}")
     if args.rs_min is not None: extras.append(f"RS>={args.rs_min:g}")
     if args.regime_gate:        extras.append("regime gate")
     if (args.tgt_mult, args.sl_mult) != (3.0, 1.5):
