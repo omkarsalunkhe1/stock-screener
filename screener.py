@@ -832,6 +832,46 @@ def _empty_pa() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Indicator assembly (shared by live scan and backtest)
+# ---------------------------------------------------------------------------
+
+def compute_indicators(df: pd.DataFrame, current_price: Optional[float] = None) -> dict:
+    """Assemble the full indicator dict from a daily OHLCV frame.
+
+    Pure function of the frame — no network, no clock. The live scanner
+    passes the LTP as current_price; the backtest omits it so the last
+    completed close is used. Keeping this shared is what stops the backtest
+    from silently testing different logic than production runs.
+    """
+    close  = df["close"]
+    high   = df["high"]
+    low    = df["low"]
+    volume = df["volume"]
+    if current_price is None:
+        current_price = float(close.iloc[-1])
+    ma20 = float(close.rolling(20).mean().iloc[-1])
+    return {
+        "current_price":    current_price,
+        "rsi":              calc_rsi(close),
+        "macd":             calc_macd(close),
+        "bollinger":        calc_bollinger(close),
+        "adx":              calc_adx(high, low, close),
+        "volume_ratio":     calc_volume_ratio(volume),
+        "momentum_5d":      calc_momentum(close, 5),
+        "momentum_20d":     calc_momentum(close, 20),
+        "ma20":             round(ma20, 2),
+        "ma20_dist_pct":    round((current_price - ma20) / ma20 * 100, 2),
+        "atr":              calc_atr(high, low, close),
+        "sr":               calc_support_resistance(close, high, low),
+        "chg_1d":           calc_momentum(close, 1),
+        "chg_5d":           calc_momentum(close, 5),
+        "52w":              calc_52w(high, low, close),
+        "golden_cross":     calc_golden_cross(close),
+        "weekly_vol_ratio": calc_weekly_vol_ratio(df),
+    }
+
+
+# ---------------------------------------------------------------------------
 # Scoring engine (daily signals)
 # ---------------------------------------------------------------------------
 
@@ -1144,11 +1184,7 @@ class SwingScreener:
         if df is None or len(df) < 30:
             return None
 
-        close  = df["close"]
-        high   = df["high"]
-        low    = df["low"]
-        volume = df["volume"]
-        current_price = float(close.iloc[-1])   # fallback: last historical close
+        current_price = float(df["close"].iloc[-1])   # fallback: last historical close
 
         # Override with live LTP so the displayed price matches the Kite app
         try:
@@ -1159,27 +1195,7 @@ class SwingScreener:
         except Exception:
             pass   # market closed or API error — historical close is fine
 
-        ma20 = float(close.rolling(20).mean().iloc[-1])
-
-        indicators = {
-            "current_price":    current_price,
-            "rsi":              calc_rsi(close),
-            "macd":             calc_macd(close),
-            "bollinger":        calc_bollinger(close),
-            "adx":              calc_adx(high, low, close),
-            "volume_ratio":     calc_volume_ratio(volume),
-            "momentum_5d":      calc_momentum(close, 5),
-            "momentum_20d":     calc_momentum(close, 20),
-            "ma20":             round(ma20, 2),
-            "ma20_dist_pct":    round((current_price - ma20) / ma20 * 100, 2),
-            "atr":              calc_atr(high, low, close),
-            "sr":               calc_support_resistance(close, high, low),
-            "chg_1d":           calc_momentum(close, 1),
-            "chg_5d":           calc_momentum(close, 5),
-            "52w":              calc_52w(high, low, close),
-            "golden_cross":     calc_golden_cross(close),
-            "weekly_vol_ratio": calc_weekly_vol_ratio(df),
-        }
+        indicators = compute_indicators(df, current_price)
 
         # Relative strength vs Nifty 50 (percentage points of out/underperformance)
         idx = self._index_momentum()
