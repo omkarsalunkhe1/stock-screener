@@ -137,8 +137,16 @@ def signal_asof(df: pd.DataFrame, n_candles: int, index_close: pd.Series,
 # ---------------------------------------------------------------------------
 
 def simulate(df: pd.DataFrame, entry_i: int, target_pct: float, sl_pct: float,
-             max_hold: int) -> "dict | None":
-    """Enter at bar entry_i's open; walk forward applying TARGET/SL/TIME."""
+             max_hold: int, partial_book_pct: float = 0.0) -> "dict | None":
+    """Enter at bar entry_i's open; walk forward applying TARGET/SL/TIME.
+
+    partial_book_pct > 0 enables scale-out: half the position is booked when
+    the high touches entry * (1 + partial_book_pct/100), and the stop on the
+    remainder moves to breakeven starting the NEXT bar (the same bar's low
+    was already tested against the original stop before the trigger check,
+    so the trigger bar cannot be stopped at breakeven retroactively).
+    Remainder exits carry reason "BE" when the breakeven stop fills.
+    """
     if entry_i >= len(df):
         return None
     o = df["open"].values;  h = df["high"].values
@@ -146,8 +154,10 @@ def simulate(df: pd.DataFrame, entry_i: int, target_pct: float, sl_pct: float,
     entry = float(o[entry_i])
     if not np.isfinite(entry) or entry <= 0:
         return None
-    tgt = entry * (1 + target_pct / 100)
-    sl  = entry * (1 - sl_pct / 100)
+    tgt  = entry * (1 + target_pct / 100)
+    stop = entry * (1 - sl_pct / 100)
+    pb   = entry * (1 + partial_book_pct / 100) if partial_book_pct > 0 else None
+    booked = False
 
     max_fav = 0.0            # best excursion, for the mandate metric
     last_i  = min(entry_i + max_hold - 1, len(df) - 1)
@@ -155,27 +165,42 @@ def simulate(df: pd.DataFrame, entry_i: int, target_pct: float, sl_pct: float,
 
     for i in range(entry_i, last_i + 1):
         max_fav = max(max_fav, (h[i] / entry - 1) * 100)
-        if i > entry_i and o[i] <= sl:            # gap through stop
-            exit_px, reason, exit_i = float(o[i]), "SL", i; break
+        if i > entry_i and o[i] <= stop:          # gap through stop
+            exit_px, exit_i = float(o[i]), i
+            reason = "BE" if booked and stop >= entry else "SL"
+            break
         if i > entry_i and o[i] >= tgt:           # gap through target
             exit_px, reason, exit_i = float(o[i]), "TARGET", i; break
-        if l[i] <= sl:                            # conservative: SL first
-            exit_px, reason, exit_i = sl, "SL", i; break
+        if l[i] <= stop:                          # conservative: stop first
+            exit_px, exit_i = stop, i
+            reason = "BE" if booked and stop >= entry else "SL"
+            break
+        if pb and not booked and h[i] >= pb:      # scale out half
+            booked = True
+            stop = max(stop, entry)               # breakeven from next bar
         if h[i] >= tgt:
             exit_px, reason, exit_i = tgt, "TARGET", i; break
 
     if reason == "TIME" and last_i == len(df) - 1 and last_i < entry_i + max_hold - 1:
         reason = "EOD"       # history ended before the trade could resolve
 
-    qty        = max(1, int(NOTIONAL / entry))
-    gross_pct  = (exit_px / entry - 1) * 100
-    charges    = _calc_charges(entry, exit_px, qty)
-    net_pct    = gross_pct - charges / (entry * qty) * 100
+    qty = max(1, int(NOTIONAL / entry))
+    if booked:
+        # blended P&L: half booked at +partial_book_pct, half at final exit
+        leg2_pct  = (exit_px / entry - 1) * 100
+        gross_pct = (partial_book_pct + leg2_pct) / 2
+        charges   = (_calc_charges(entry, float(pb), qty // 2 or 1)
+                     + _calc_charges(entry, exit_px, qty - (qty // 2 or 1)))
+    else:
+        gross_pct = (exit_px / entry - 1) * 100
+        charges   = _calc_charges(entry, exit_px, qty)
+    net_pct = gross_pct - charges / (entry * qty) * 100
     return {
         "entry_date": df["date"].iloc[entry_i].date(), "entry": round(entry, 2),
         "exit_date":  df["date"].iloc[exit_i].date(),  "exit":  round(exit_px, 2),
         "held":       exit_i - entry_i + 1,
         "reason":     reason,
+        "booked":     booked,
         "gross_pct":  round(gross_pct, 2),
         "net_pct":    round(net_pct, 2),
         "max_fav":    round(max_fav, 2),
@@ -187,8 +212,20 @@ def simulate(df: pd.DataFrame, entry_i: int, target_pct: float, sl_pct: float,
 # ---------------------------------------------------------------------------
 
 def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
-                 every: int = 5, max_hold: int = 10, top: int = 0) -> list:
-    """Scan every `every` sessions on the index calendar; simulate signals."""
+                 every: int = 5, max_hold: int = 10, top: int = 0,
+                 rs_min: "float | None" = None, regime_gate: bool = False,
+                 tgt_mult: float = 3.0, sl_mult: float = 1.5,
+                 partial_book: float = 0.0) -> list:
+    """Scan every `every` sessions on the index calendar; simulate signals.
+
+    Experiment knobs (defaults reproduce production behaviour):
+      rs_min       hard filter: require rs_nifty_20d >= rs_min
+      regime_gate  skip scan dates where the Nifty closes below its 20-DMA
+      tgt_mult /   override the ATR multiples used for exit levels (entry
+        sl_mult    selection still uses the production 3x/1.5x volatility
+                   gate, so all variants trade the same signal set)
+      partial_book book half at +X% and move the stop to breakeven
+    """
     idx_dates = index_df["date"].values
     idx_close = index_df["close"]
     # candle-count position of each symbol's dates on a common axis
@@ -199,25 +236,34 @@ def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
     for k in scan_points:
         t = idx_dates[k]
         idx_slice = idx_close.iloc[:k + 1].tail(WARMUP)
+        if regime_gate:
+            ma20 = float(idx_slice.tail(20).mean())
+            if float(idx_slice.iloc[-1]) < ma20:
+                continue
         cohort = []
         for sym, df in hist.items():
             n = int(np.searchsorted(sym_dates[sym], t, side="right"))
             if n < WARMUP // 2 or n >= len(df):     # need history AND a next bar
                 continue
             sig = signal_asof(df, n, idx_slice, filters)
-            if sig:
-                sig.update(symbol=sym, n=n)
-                cohort.append(sig)
+            if sig is None:
+                continue
+            if rs_min is not None and (sig["rs20"] is None or sig["rs20"] < rs_min):
+                continue
+            sig.update(symbol=sym, n=n)
+            cohort.append(sig)
         cohort.sort(key=lambda s: s["score"], reverse=True)
         if top:
             cohort = cohort[:top]
         for sig in cohort:
-            tr = simulate(hist[sig["symbol"]], sig["n"], sig["target_pct"],
-                          sig["sl_pct"], max_hold)
+            atr_pct = sig["target_pct"] / 3.0       # production target is 3x ATR
+            tp, sp = atr_pct * tgt_mult, atr_pct * sl_mult
+            tr = simulate(hist[sig["symbol"]], sig["n"], tp, sp, max_hold,
+                          partial_book_pct=partial_book)
             if tr:
                 tr.update(symbol=sig["symbol"], score=sig["score"],
                           base_score=sig["base_score"], rs20=sig["rs20"],
-                          target_pct=sig["target_pct"], sl_pct=sig["sl_pct"],
+                          target_pct=round(tp, 2), sl_pct=round(sp, 2),
                           rsi=sig["rsi"], vol_ratio=sig["vol_ratio"])
                 trades.append(tr)
     return trades
@@ -233,11 +279,12 @@ def _bucket_stats(rows: list) -> str:
         return f"{'—':>5}"
     tgt  = sum(1 for r in rows if r["reason"] == "TARGET") / n * 100
     sl   = sum(1 for r in rows if r["reason"] == "SL") / n * 100
+    be   = sum(1 for r in rows if r["reason"] == "BE") / n * 100
     tm   = sum(1 for r in rows if r["reason"] in ("TIME", "EOD")) / n * 100
     net  = sum(r["net_pct"] for r in rows) / n
     m5   = sum(1 for r in rows if r["max_fav"] >= 5.0) / n * 100
     hold = sum(r["held"] for r in rows) / n
-    return (f"{n:>5} {tgt:>8.0f}% {sl:>6.0f}% {tm:>6.0f}% "
+    return (f"{n:>5} {tgt:>7.0f}% {sl:>5.0f}% {be:>5.0f}% {tm:>5.0f}% "
             f"{net:>+9.2f}% {m5:>9.0f}% {hold:>7.1f}")
 
 
@@ -252,7 +299,7 @@ def report(trades: list, label: str):
     d0 = min(t["entry_date"] for t in trades)
     d1 = max(t["exit_date"] for t in trades)
     print(f"{len(trades)} trades, {d0} -> {d1}")
-    hdr = (f"{'bucket':<14}{'n':>5} {'TARGET':>8} {'SL':>7} {'TIME':>7} "
+    hdr = (f"{'bucket':<14}{'n':>5} {'TARGET':>7} {'SL':>6} {'BE':>6} {'TIME':>6} "
            f"{'avg net':>10} {'hit +5%':>10} {'hold d':>8}")
     print(); print(hdr); print("-" * len(hdr))
     print(f"{'ALL':<14}" + _bucket_stats(trades))
@@ -291,6 +338,14 @@ def main():
     ap.add_argument("--top", type=int, default=0, help="cap signals per scan (0 = all)")
     ap.add_argument("--min-score", type=int, default=DEFAULT_FILTERS["min_score"])
     ap.add_argument("--min-vol", type=float, default=DEFAULT_FILTERS["min_vol_surge"])
+    ap.add_argument("--rs-min", type=float, default=None,
+                    help="hard filter: require RS vs Nifty 20D >= this (e.g. 0)")
+    ap.add_argument("--regime-gate", action="store_true",
+                    help="skip scan dates where Nifty closes below its 20-DMA")
+    ap.add_argument("--tgt-mult", type=float, default=3.0, help="target ATR multiple")
+    ap.add_argument("--sl-mult", type=float, default=1.5, help="stop ATR multiple")
+    ap.add_argument("--partial-book", type=float, default=0.0,
+                    help="book half at +X%% and move stop to breakeven (0 = off)")
     ap.add_argument("--refresh", action="store_true", help="refetch cached history")
     ap.add_argument("--out", default="", help="write trades CSV to this path")
     args = ap.parse_args()
@@ -312,10 +367,21 @@ def main():
 
     log.info(f"Replaying {len(hist)} symbols, scan every {args.every} sessions...")
     trades = run_backtest(hist, index_df, filters,
-                          every=args.every, max_hold=args.max_hold, top=args.top)
+                          every=args.every, max_hold=args.max_hold, top=args.top,
+                          rs_min=args.rs_min, regime_gate=args.regime_gate,
+                          tgt_mult=args.tgt_mult, sl_mult=args.sl_mult,
+                          partial_book=args.partial_book)
 
     label = (f"{args.universe}, {args.years:g}y, every {args.every} sessions, "
              f"min_score {args.min_score}, vol>={args.min_vol}x, hold<={args.max_hold}")
+    extras = []
+    if args.rs_min is not None: extras.append(f"RS>={args.rs_min:g}")
+    if args.regime_gate:        extras.append("regime gate")
+    if (args.tgt_mult, args.sl_mult) != (3.0, 1.5):
+        extras.append(f"exits {args.tgt_mult:g}x/{args.sl_mult:g}x ATR")
+    if args.partial_book:       extras.append(f"book half @ +{args.partial_book:g}%")
+    if extras:
+        label += " | " + ", ".join(extras)
     report(trades, label)
 
     if args.out:
