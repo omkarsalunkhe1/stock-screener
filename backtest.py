@@ -68,15 +68,26 @@ DEFAULT_FILTERS = {
 
 def load_history(sc: SwingScreener, symbols: list, years: float,
                  refresh: bool = False) -> dict:
-    """Return {symbol: daily OHLCV DataFrame} covering `years` + warmup."""
+    """Return {symbol: daily OHLCV DataFrame} covering `years` + warmup.
+
+    The cache file always holds the largest window ever fetched for a
+    symbol (so later requests for MORE years trigger a refetch, but
+    requests for FEWER years reuse it). The frame returned to the caller
+    is always trimmed to exactly `sessions` rows — a cache hit from a
+    previous longer run must not silently replay extra history beyond
+    what was requested.
+    """
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     sessions = int(years * 252) + WARMUP + 20
     hist = {}
     for i, sym in enumerate(symbols):
         cache = CACHE_DIR / f"{sym.replace('&', '_')}.csv"
+        df = None
         if cache.exists() and not refresh:
             df = pd.read_csv(cache, parse_dates=["date"])
-        else:
+            if len(df) < sessions:
+                df = None   # cached window too short for this request — refetch
+        if df is None:
             log.info(f"  [{i+1}/{len(symbols)}] fetching {sym}...")
             df = sc._fetch(sym, "day", sessions)
             time.sleep(0.35)
@@ -85,7 +96,7 @@ def load_history(sc: SwingScreener, symbols: list, years: float,
                 continue
             df.to_csv(cache, index=False)
         df["date"] = pd.to_datetime(df["date"], utc=True)
-        hist[sym] = df.reset_index(drop=True)
+        hist[sym] = df.tail(sessions).reset_index(drop=True)
     return hist
 
 
