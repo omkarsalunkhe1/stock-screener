@@ -1,0 +1,18 @@
+# Secrets & credentials — never commit
+kite_config.json
+run-server.txt
+.env
+
+# Runtime state / caches (regenerated)
+__pycache__/
+*.pyc
+swing_paper_trades.json
+symbols_cache.json
+data/
+rag_db/
+reports/
+
+# Agent tooling metadata
+.claude/
+.codex/
+.agents/
