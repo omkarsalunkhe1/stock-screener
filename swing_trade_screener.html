@@ -34,7 +34,14 @@
 body{font-family:var(--font-sans);color:var(--color-text-primary);background:var(--color-background-primary);padding:1.25rem clamp(1rem,3vw,2.5rem);max-width:1600px;margin:0 auto}
 select,input[type=text],input[type=range],button{font-family:inherit;font-size:13px;color:var(--color-text-primary);background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 8px;outline:none}
 select:focus,input:focus{border-color:var(--color-border-primary)}
-input[type=range]{padding:0;border:none;background:transparent}
+input[type=range]{padding:0;border:none;background:transparent;-webkit-appearance:none;appearance:none;width:100%;height:20px;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:99px;background:var(--color-border-tertiary)}
+input[type=range]::-moz-range-track{height:4px;border-radius:99px;background:var(--color-border-tertiary)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;background:var(--color-text-primary);border:2px solid var(--color-background-primary);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .12s}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--color-text-primary);border:2px solid var(--color-background-primary);box-shadow:0 1px 2px rgba(0,0,0,.25)}
+input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.12)}
+input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--color-text-info);outline-offset:2px}
+input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid var(--color-text-info);outline-offset:2px}
 .conn-bar{display:flex;align-items:center;gap:10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:1.25rem;flex-wrap:wrap}
 .conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .dot-live{background:#3B6D11}.dot-demo{background:#854F0B}.dot-err{background:#A32D2D}.dot-checking{background:#888780}
@@ -54,19 +61,20 @@ input[type=range]{padding:0;border:none;background:transparent}
 h2{font-size:18px;font-weight:500;margin-bottom:4px}
 .sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.25rem}
 .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:1.25rem}
-.ctrl{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
-.ctrl label{font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
+.ctrl{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;display:flex;flex-direction:column;min-height:78px}
+.ctrl label{font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px}
 .ctrl select,.ctrl input[type=range]{width:100%}
-.ctrl .val{font-size:13px;font-weight:500;margin-top:4px}
+.ctrl .val{font-size:13px;font-weight:500;margin-top:auto;padding-top:6px}
 .scan-btn{width:100%;padding:10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);font-size:14px;font-weight:500;cursor:pointer;color:var(--color-text-primary);margin-bottom:1.25rem;transition:background .15s}
 .scan-btn:hover{background:var(--color-background-secondary)}
 .scan-btn:disabled{opacity:.5;cursor:not-allowed}
-.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:1.25rem}
-.stat{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px}
-.stat-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:4px}
-.stat-val{font-size:20px;font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px;margin-bottom:1.25rem}
+.stat{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
+.stat-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:2px}
+.stat-val{font-size:20px;font-weight:500;line-height:1.2}
+.stat-export{display:flex;align-items:center;justify-content:center;background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
 .rh{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr 1fr;gap:8px;padding:6px 12px;font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:4px}
-.sc{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;margin-bottom:6px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr 1fr 60px;gap:8px;align-items:center;cursor:pointer;transition:border-color .15s}
+.sc{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;margin-bottom:6px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1.2fr 1fr 60px;gap:8px;align-items:start;cursor:pointer;transition:border-color .15s}
 .sc:hover{border-color:var(--color-border-primary)}
 .sn{font-size:14px;font-weight:500}
 .sst{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
@@ -189,7 +197,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
   <div class="conn-label" id="connLabel">Enter backend URL and Kite access_token to enable live data</div>
   <div class="conn-inputs">
     <input type="text" id="backendUrl" placeholder="http://localhost:8000" value="http://localhost:8000">
-    <input type="text" id="accessToken" placeholder="Kite access_token" style="width:170px">
+    <input type="password" id="accessToken" placeholder="Kite access_token" autocomplete="off" style="width:170px">
     <button class="btn-sm" onclick="checkConn()">Connect</button>
   </div>
   <div class="funds-strip">
@@ -372,7 +380,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
   <div class="stat"><div class="stat-label">Qualified</div><div class="stat-val" id="sq">0</div></div>
   <div class="stat"><div class="stat-label">Strong buy</div><div class="stat-val" style="color:var(--color-text-success)" id="sb">0</div></div>
   <div class="stat"><div class="stat-label">Avg target</div><div class="stat-val" id="sa">0%</div></div>
-  <div class="stat" style="justify-content:flex-end">
+  <div class="stat-export">
     <button class="btn-sm" onclick="exportToExcel()" title="Export results to Excel">⬇ Export Excel</button>
   </div>
 </div>
@@ -782,12 +790,19 @@ function render(results,isLive){
           ${pa.pa_score>0?`<span style="font-size:10px;color:var(--color-text-success);font-weight:500">+${pa.pa_score} PA</span>`:''}
         </div>
         <div class="sbar" style="width:80px"><div class="sfill" style="width:${Math.min(100,sc)}%"></div></div>
-        ${pa.has_pattern?`<div style="margin-top:3px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(34,197,94,.15);color:var(--color-text-success)">${pa.pattern_summary.split(',')[0].trim()}</span></div>`:''}
-        ${pa.bearish_patterns&&pa.bearish_patterns.length?`<div style="margin-top:2px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(251,191,36,.15);color:#f59e0b">⚠ ${pa.bearish_patterns[0]}</span></div>`:''}
-        ${ind.golden_cross&&ind.golden_cross.golden_cross?`<div style="margin-top:2px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(139,92,246,.15);color:#a78bfa">✦ Golden Cross${ind.golden_cross.cross_days_ago?` (${ind.golden_cross.cross_days_ago}d ago)`:''}</span></div>`:''}
-        ${(()=>{const gc=ind.golden_cross||{};if(gc.death_cross)return`<div style="margin-top:2px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(239,68,68,.2);color:#f87171">✗ Fresh Death Cross (−20 pts)</span></div>`;if(gc.ma50&&gc.ma200&&gc.ma50<gc.ma200){const abv=gc.above_ma200;return`<div style="margin-top:2px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(239,68,68,.12);color:#fca5a5">${abv?'⚠ False-breakout risk (MA50 below MA200, −18 pts)':'↗ Recovery below MA200 (−12 pts)'}</span></div>`;}return'';})()}
-        ${ev.surveillance?`<div style="margin-top:2px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(239,68,68,.2);color:#f87171" title="NSE surveillance list — 100% margin and tight circuit limits; swing exits can get trapped for days">⚠ NSE ${ev.surveillance}</span></div>`:''}
-        ${evDays!=null&&evDays<=21?`<div style="margin-top:2px"><span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:rgba(251,191,36,${evDays<=10?'.2':'.12'});color:#f59e0b" title="Earnings on ${ev.earnings_date} — a 1-2 week hold that straddles a results day is gap risk, not a technical trade">📅 Earnings in ${evDays}d</span></div>`:''}
+        ${(()=>{
+          const b=[];
+          const pill=(bg,fg,txt,title)=>`<span style="font-size:10px;font-weight:500;padding:2px 6px;border-radius:99px;background:${bg};color:${fg};white-space:nowrap"${title?` title="${title}"`:''}>${txt}</span>`;
+          if(pa.has_pattern) b.push(pill('rgba(34,197,94,.15)','var(--color-text-success)',pa.pattern_summary.split(',')[0].trim()));
+          if(pa.bearish_patterns&&pa.bearish_patterns.length) b.push(pill('rgba(251,191,36,.15)','#f59e0b',`⚠ ${pa.bearish_patterns[0]}`));
+          const gc=ind.golden_cross||{};
+          if(gc.golden_cross) b.push(pill('rgba(139,92,246,.15)','#a78bfa','✦ Golden Cross',gc.cross_days_ago?`Crossed ${gc.cross_days_ago} day(s) ago`:''));
+          if(gc.death_cross) b.push(pill('rgba(239,68,68,.2)','#f87171','✗ Fresh Death Cross','Fresh Death Cross: −20 pts'));
+          else if(gc.ma50&&gc.ma200&&gc.ma50<gc.ma200){const abv=gc.above_ma200;b.push(pill('rgba(239,68,68,.12)','#fca5a5',abv?'⚠ False-breakout risk':'↗ Recovery below MA200',abv?'MA50 below MA200: −18 pts':'Recovering below MA200: −12 pts'));}
+          if(ev.surveillance) b.push(pill('rgba(239,68,68,.2)','#f87171',`⚠ NSE ${ev.surveillance}`,'NSE surveillance list — 100% margin and tight circuit limits; swing exits can get trapped for days'));
+          if(evDays!=null&&evDays<=21) b.push(pill(`rgba(251,191,36,${evDays<=10?'.2':'.12'})`,'#f59e0b',`📅 Earnings in ${evDays}d`,`Earnings on ${ev.earnings_date} — a 1-2 week hold that straddles a results day is gap risk, not a technical trade`));
+          return b.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${b.join('')}</div>`:'';
+        })()}
       </div>
       <div><div style="font-size:13px;font-weight:500;color:var(--color-text-success)">+${(+tgt).toFixed(1)}% tgt</div><div style="font-size:11px;color:var(--color-text-danger)">-${(+sl).toFixed(1)}% SL</div></div>
       <div style="display:flex;flex-direction:column;gap:4px">
