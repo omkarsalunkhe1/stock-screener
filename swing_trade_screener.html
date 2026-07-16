@@ -60,11 +60,11 @@ input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid var(--color-
 .badge-demo{background:var(--color-background-warning);color:var(--color-text-warning)}
 h2{font-size:18px;font-weight:500;margin-bottom:4px}
 .sub{font-size:13px;color:var(--color-text-secondary);margin-bottom:1.25rem}
-.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:1.25rem}
-.ctrl{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;display:flex;flex-direction:column;min-height:78px}
-.ctrl label{font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:0}
+.ctrl{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px 10px;display:flex;flex-direction:column;min-height:64px}
+.ctrl label{font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px}
 .ctrl select,.ctrl input[type=range]{width:100%}
-.ctrl .val{font-size:13px;font-weight:500;margin-top:auto;padding-top:6px}
+.ctrl .val{font-size:12px;font-weight:500;margin-top:auto;padding-top:4px}
 .scan-btn{width:100%;padding:10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);font-size:14px;font-weight:500;cursor:pointer;color:var(--color-text-primary);margin-bottom:1.25rem;transition:background .15s}
 .scan-btn:hover{background:var(--color-background-secondary)}
 .scan-btn:disabled{opacity:.5;cursor:not-allowed}
@@ -143,7 +143,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 .filter-header:not(.collapsed){border-bottom-left-radius:0;border-bottom-right-radius:0}
 #filterPanel{display:grid;grid-template-rows:1fr;transition:grid-template-rows .22s ease,opacity .18s ease;opacity:1;border:0.5px solid var(--color-border-tertiary);border-top:none;border-radius:0 0 var(--border-radius-md) var(--border-radius-md);margin-bottom:1rem}
 #filterPanel.collapsed{grid-template-rows:0fr;opacity:0;pointer-events:none;border-bottom-color:transparent}
-.filter-inner{min-height:0;overflow:hidden;padding:1rem}
+.filter-inner{min-height:0;overflow:hidden;padding:10px 12px 12px}
 /* ─── Paper trading ──────────────────────────────────────────────────────── */
 .pt-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.25rem}
 .pt-card{background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px 14px}
@@ -231,7 +231,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 <div id="filterPanel">
   <div class="filter-inner">
 
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:1rem">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <span style="font-size:11px;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">Quick presets</span>
       <button class="btn-sm" onclick="applyPreset('darvas')" title="Within 10% of 52W high, strong volume">📦 Darvas Box</button>
       <button class="btn-sm" onclick="applyPreset('golden_cross')" title="50 DMA recently crossed above 200 DMA">✦ Golden Crossover</button>
@@ -336,31 +336,6 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
     <button id="ai-toggle-local"  onclick="setAIProvider('local')"  style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:var(--color-text-tertiary)">⚡ Local</button>
   </div>
 </div>
-<!-- Claude model selector (shown when provider=claude) -->
-<div id="ai-claude-bar" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:8px">
-  <span style="font-size:11px;color:var(--color-text-secondary)">✦ Model:</span>
-  <select id="ai-claude-model-select" onchange="AI_CLAUDE_MODEL=this.value" style="font-size:11px;padding:2px 6px;border-radius:6px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer">
-    <option value="claude-opus-4-6" selected>claude-opus-4-6 (best quality)</option>
-    <option value="claude-sonnet-4-5">claude-sonnet-4-5 (faster)</option>
-    <option value="claude-haiku-3-5">claude-haiku-3-5 (fastest / cheapest)</option>
-  </select>
-  <span style="font-size:10px;color:var(--color-text-tertiary)">· requires ANTHROPIC_API_KEY in .env</span>
-</div>
-<!-- Local model selector (shown when provider=local) -->
-<div id="ai-local-bar" style="display:none;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:8px">
-  <span style="font-size:11px;color:var(--color-text-secondary)">⚡ Model:</span>
-  <select id="ai-model-select" onchange="AI_LOCAL_MODEL=this.value" style="font-size:11px;padding:2px 6px;border-radius:6px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:pointer"></select>
-  <span style="font-size:10px;color:var(--color-text-tertiary)">· Ollama must be running (<code style="font-size:10px">ollama serve</code>)</span>
-</div>
-
-<!-- Annual reports RAG bar -->
-<div id="rag-reports-bar" style="display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:8px;flex-wrap:wrap">
-  <span style="font-size:11px;color:var(--color-text-secondary)">📄 Annual Reports:</span>
-  <span id="rag-companies-list" style="font-size:11px;color:var(--color-text-tertiary)">checking…</span>
-  <button onclick="rebuildReports()" id="rag-rebuild-btn" title="Re-ingest all PDFs in the reports/ folder" style="font-size:11px;font-weight:500;padding:2px 10px;border-radius:99px;border:0.5px solid var(--color-border-secondary);background:transparent;cursor:pointer;color:var(--color-text-secondary);margin-left:auto" onmouseover="this.style.background='var(--color-background-tertiary)'" onmouseout="this.style.background='transparent'">↻ Rebuild</button>
-  <span id="rag-ingest-status" style="font-size:11px;color:var(--color-text-tertiary)"></span>
-</div>
-
 <div class="ebanner" id="ebanner"></div>
 <div class="plabel" id="plabel"></div>
 <div class="pbar" id="pbar"><div class="pfill" id="pfill" style="width:0%"></div></div>
@@ -576,7 +551,6 @@ async function checkConn(){
       try{const sp=await fetch(BACKEND+'/sector-perf?access_token='+encodeURIComponent(TOKEN),{signal:AbortSignal.timeout(10000)});if(sp.ok)SECTOR_PERF=await sp.json();}catch(_){}
       loadFunds(true);
     }
-    fetchRagStatus();   // show which annual reports are ingested
   }catch(e){IS_LIVE=false;setConn('err','Cannot reach server — running in demo mode');}
 }
 
@@ -1182,25 +1156,8 @@ async function setAIProvider(p){
   const tl=document.getElementById('ai-toggle-local');
   if(tc){tc.style.background=p==='claude'?'rgba(167,139,250,.2)':'transparent';tc.style.color=p==='claude'?'#a78bfa':'var(--color-text-tertiary)';}
   if(tl){tl.style.background=p==='local'?'rgba(96,165,250,.2)':'transparent';tl.style.color=p==='local'?'#60a5fa':'var(--color-text-tertiary)';}
-  // Show/hide model bars
-  const claudeBar=document.getElementById('ai-claude-bar');
-  const localBar=document.getElementById('ai-local-bar');
-  if(claudeBar) claudeBar.style.display=p==='claude'?'flex':'none';
-  if(localBar)  localBar.style.display=p==='local'?'flex':'none';
-  // Fetch Ollama models on first switch to local
-  if(p==='local'&&AI_LOCAL_MODELS.length===0){
-    const d=await fetchLocalModels();
-    const sel=document.getElementById('ai-model-select');
-    if(sel){
-      sel.innerHTML='';
-      if(d.available&&d.models&&d.models.length){
-        d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;if(m===d.default)o.selected=true;sel.appendChild(o);});
-        AI_LOCAL_MODEL=d.default||d.models[0];
-      }else{
-        sel.innerHTML='<option value="">Ollama not running — install from ollama.com</option>';
-      }
-    }
-  }
+  // Fetch Ollama models on first switch to local (sets AI_LOCAL_MODEL to the server default)
+  if(p==='local'&&AI_LOCAL_MODELS.length===0) await fetchLocalModels();
   // Reset loaded flags so open cards reload with new provider
   document.querySelectorAll('.dp[data-ai-loaded]').forEach(el=>{
     delete el.dataset.aiLoaded;
@@ -1264,62 +1221,6 @@ function renderAIAnalysis(data){
     :`<span style="color:#a78bfa">✦ ${data.model||'Claude'}</span>`;
   return`<div style="font-size:13px;line-height:1.7;color:var(--color-text-primary);padding:6px 0">${escaped}</div>
 <div style="font-size:10px;color:var(--color-text-tertiary);margin-top:4px">${modelLabel} · For educational use only — not financial advice</div>`;
-}
-
-// ── Annual reports RAG ───────────────────────────────────────────────────────
-async function fetchRagStatus(){
-  try{
-    const r=await fetch(BACKEND+'/rag-status',{signal:AbortSignal.timeout(5000)});
-    if(!r.ok)return;
-    const d=await r.json();
-    const el=document.getElementById('rag-companies-list');
-    if(!el)return;
-    if(d.ar_companies&&d.ar_companies.length){
-      el.textContent=d.ar_companies.join(', ')+' ('+d.ar_chunks+' chunks)';
-      el.style.color='var(--color-text-success)';
-    }else{
-      el.textContent='None ingested yet — drop PDFs in reports/ and click Rebuild';
-      el.style.color='var(--color-text-tertiary)';
-    }
-  }catch(e){
-    const el=document.getElementById('rag-companies-list');
-    if(el){el.textContent='Server not reachable';el.style.color='var(--color-text-danger)';}
-  }
-}
-
-async function rebuildReports(){
-  const btn=document.getElementById('rag-rebuild-btn');
-  const status=document.getElementById('rag-ingest-status');
-  const list=document.getElementById('rag-companies-list');
-  if(btn)btn.disabled=true;
-  if(status){status.textContent='Ingesting…';status.style.color='var(--color-text-warning)';}
-  try{
-    const r=await fetch(BACKEND+'/ingest-reports',{method:'POST',signal:AbortSignal.timeout(10000)});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    // Poll until done
-    const poll=setInterval(async()=>{
-      try{
-        const sr=await fetch(BACKEND+'/ingest-reports/status',{signal:AbortSignal.timeout(5000)});
-        const sd=await sr.json();
-        if(sd.status==='done'){
-          clearInterval(poll);
-          if(btn)btn.disabled=false;
-          if(status){status.textContent='Done';status.style.color='var(--color-text-success)';}
-          fetchRagStatus();
-          setTimeout(()=>{if(status)status.textContent='';},4000);
-        }else if(sd.status==='error'){
-          clearInterval(poll);
-          if(btn)btn.disabled=false;
-          if(status){status.textContent='Error: '+sd.message.slice(0,80);status.style.color='var(--color-text-danger)';}
-        }else{
-          if(status){status.textContent='Ingesting…';status.style.color='var(--color-text-warning)';}
-        }
-      }catch(_){}
-    },2000);
-  }catch(e){
-    if(btn)btn.disabled=false;
-    if(status){status.textContent='Failed: '+e.message;status.style.color='var(--color-text-danger)';}
-  }
 }
 
 function reloadNews(cardId, sym){
