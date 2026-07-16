@@ -268,6 +268,9 @@ def screen(
     weekly_required: str = Query("bullish", description="bullish | not_bearish"),
     exclude_earnings_days: int = Query(10, ge=0, le=30, description="Reject stocks reporting earnings within N days (0 = off)"),
     exclude_surveillance: bool = Query(True, description="Reject stocks on NSE ASM/GSM surveillance lists"),
+    headroom_check: bool = Query(True, description="Cap targets at the nearest resistance (realistic 2-3 week move) instead of raw 3x ATR"),
+    min_turnover_cr: float = Query(5.0, ge=0, le=100, description="Min 20-day avg daily turnover in ₹ crore (0 = off)"),
+    rs_min: float = Query(0.0, ge=-100, le=20, description="Min 20-day relative strength vs Nifty in pp (-100 = off)"),
     top_n: int         = Query(20,  ge=1,  le=50),
 ):
     if universe == "custom":
@@ -289,6 +292,9 @@ def screen(
         "weekly_trend_required": weekly_required,
         "exclude_earnings_days": exclude_earnings_days,
         "exclude_surveillance":  exclude_surveillance,
+        "headroom_check":        headroom_check,
+        "min_turnover_cr":       min_turnover_cr,
+        "rs_min":                rs_min if rs_min > -100 else None,
     }
 
     try:
@@ -306,6 +312,9 @@ def screen(
                 "weekly_trend_filter": False,
                 "exclude_earnings_days": 0,    # event screens flag, never drop user picks
                 "exclude_surveillance":  False,
+                "headroom_check":        True,   # capping only shapes the target —
+                "min_turnover_cr":       0.0,    # with min_target_pct 0 nothing is dropped
+                "rs_min":                None,   # never drop user picks on RS
             }
             results = []
             for sym in symbols:

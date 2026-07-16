@@ -59,6 +59,8 @@ INDEX_SYMBOL = "NIFTY 50"
 DEFAULT_FILTERS = {
     "rsi_min": 45, "rsi_max": 68, "min_vol_surge": 1.5,
     "min_score": 60, "min_target_pct": 5.0,
+    "headroom_check": True, "min_turnover_cr": 5.0,
+    "rs_min": 0.0,
 }
 
 
@@ -114,6 +116,14 @@ def signal_asof(df: pd.DataFrame, n_candles: int, index_close: pd.Series,
     window = df.iloc[:n_candles].tail(WARMUP)
     if len(window) < 30:
         return None
+
+    # Liquidity floor — mirrors analyse_stock (turnover in ₹ crore)
+    min_turnover_cr = float(filters.get("min_turnover_cr", 0.0))
+    if min_turnover_cr > 0:
+        turnover_cr = float((window["close"] * window["volume"]).tail(20).mean()) / 1e7
+        if turnover_cr < min_turnover_cr:
+            return None
+
     ind = compute_indicators(window)
 
     # Relative strength vs the index, as of the same date
@@ -125,9 +135,18 @@ def signal_asof(df: pd.DataFrame, n_candles: int, index_close: pd.Series,
         return None
     if ind["volume_ratio"] < filters["min_vol_surge"]:
         return None
+    # Relative-strength floor — mirrors analyse_stock (fails open on None)
+    rs_floor = filters.get("rs_min")
+    if rs_floor is not None:
+        rs20 = ind.get("rs_nifty_20d")
+        if rs20 is not None and rs20 < rs_floor:
+            return None
     scoring = score_stock(ind, filters)
     if scoring["score"] < filters["min_score"]:
         return None
+    # target_pct is the realistic (headroom-capped) number when
+    # filters["headroom_check"] is on — computed inside score_stock, so
+    # this gate mirrors analyse_stock with zero extra code.
     if scoring["target_pct"] < filters["min_target_pct"]:
         return None
 
@@ -176,6 +195,14 @@ def signal_pullback_asof(df: pd.DataFrame, n_candles: int,
     window = df.iloc[:n_candles].tail(WARMUP)
     if len(window) < 60:
         return None
+
+    # Liquidity floor — mirrors analyse_stock
+    min_turnover_cr = float(filters.get("min_turnover_cr", 0.0))
+    if min_turnover_cr > 0:
+        turnover_cr = float((window["close"] * window["volume"]).tail(20).mean()) / 1e7
+        if turnover_cr < min_turnover_cr:
+            return None
+
     c = window["close"].values; o = window["open"].values
     h = window["high"].values;  v = window["volume"].values
 
@@ -209,7 +236,16 @@ def signal_pullback_asof(df: pd.DataFrame, n_candles: int,
     if index_close is not None and len(index_close) > 21:
         ind["rs_nifty_5d"]  = round(ind["momentum_5d"]  - calc_momentum(index_close, 5),  2)
         ind["rs_nifty_20d"] = round(ind["momentum_20d"] - calc_momentum(index_close, 20), 2)
-    scoring = score_stock(ind, filters)
+    # Relative-strength floor — mirrors analyse_stock (fails open on None)
+    rs_floor = filters.get("rs_min")
+    if rs_floor is not None:
+        rs20 = ind.get("rs_nifty_20d")
+        if rs20 is not None and rs20 < rs_floor:
+            return None
+    # headroom_check off: a pullback entry sits 1.5-3% below the recent
+    # high BY DESIGN and its thesis is that the high breaks — capping the
+    # target at that high would reject every valid setup.
+    scoring = score_stock(ind, dict(filters, headroom_check=False))
     if scoring["target_pct"] < filters.get("min_target_pct", 5.0):     # 6. volatility
         return None
 
@@ -363,8 +399,12 @@ def run_backtest(hist: dict, index_df: pd.DataFrame, filters: dict,
         for sig in cohort:
             last_taken[sig["symbol"]] = sig["n"]
         for sig in cohort:
-            atr_pct = sig["target_pct"] / 3.0       # production target is 3x ATR
-            tp, sp = atr_pct * tgt_mult, atr_pct * sl_mult
+            # Scale the production levels rather than recomputing from raw
+            # ATR: sig["sl_pct"] may be a structural (support-based) stop,
+            # and rebuilding from ATR would silently discard it. At the
+            # default 3.0/1.5 multiples these are exactly the signal levels.
+            tp = sig["target_pct"] * (tgt_mult / 3.0)
+            sp = sig["sl_pct"]     * (sl_mult  / 1.5)
             tr = simulate(hist[sig["symbol"]], sig["n"], tp, sp, max_hold,
                           partial_book_pct=partial_book)
             if tr:
@@ -445,8 +485,9 @@ def main():
     ap.add_argument("--top", type=int, default=0, help="cap signals per scan (0 = all)")
     ap.add_argument("--min-score", type=int, default=DEFAULT_FILTERS["min_score"])
     ap.add_argument("--min-vol", type=float, default=DEFAULT_FILTERS["min_vol_surge"])
-    ap.add_argument("--rs-min", type=float, default=None,
-                    help="hard filter: require RS vs Nifty 20D >= this (e.g. 0)")
+    ap.add_argument("--rs-min", type=float, default=DEFAULT_FILTERS["rs_min"],
+                    help="RS vs Nifty 20D floor in pp (production default 0; "
+                         "-100 disables)")
     ap.add_argument("--regime-gate", action="store_true",
                     help="skip scan dates where Nifty closes below its 20-DMA")
     ap.add_argument("--tgt-mult", type=float, default=3.0, help="target ATR multiple")
@@ -457,11 +498,17 @@ def main():
                     help="entry style; pullback needs --every 1")
     ap.add_argument("--cooldown", type=int, default=0,
                     help="sessions to skip a symbol after taking its signal")
+    ap.add_argument("--no-headroom", action="store_true",
+                    help="uncapped 3x ATR targets — disable the realistic-target "
+                         "ceiling (A/B baseline)")
     ap.add_argument("--refresh", action="store_true", help="refetch cached history")
     ap.add_argument("--out", default="", help="write trades CSV to this path")
     args = ap.parse_args()
 
-    filters = dict(DEFAULT_FILTERS, min_score=args.min_score, min_vol_surge=args.min_vol)
+    filters = dict(DEFAULT_FILTERS, min_score=args.min_score, min_vol_surge=args.min_vol,
+                   rs_min=(None if args.rs_min <= -100 else args.rs_min))
+    if args.no_headroom:
+        filters["headroom_check"] = False
 
     cfg = json.load(open(Path(__file__).parent / "kite_config.json"))
     sc = SwingScreener(api_key=cfg["api_key"], access_token=cfg["access_token"])
@@ -477,9 +524,11 @@ def main():
         raise SystemExit("Could not load index history")
 
     log.info(f"Replaying {len(hist)} symbols, scan every {args.every} sessions...")
+    # RS floor lives in filters (mirrors production); run_backtest's own
+    # rs_min post-filter stays for programmatic experiments only.
     trades = run_backtest(hist, index_df, filters,
                           every=args.every, max_hold=args.max_hold, top=args.top,
-                          rs_min=args.rs_min, regime_gate=args.regime_gate,
+                          rs_min=None, regime_gate=args.regime_gate,
                           tgt_mult=args.tgt_mult, sl_mult=args.sl_mult,
                           partial_book=args.partial_book, entry=args.entry,
                           cooldown=args.cooldown)
@@ -489,7 +538,7 @@ def main():
     extras = []
     if args.entry != "surge":   extras.append(f"{args.entry} entry")
     if args.cooldown:           extras.append(f"cooldown {args.cooldown}")
-    if args.rs_min is not None: extras.append(f"RS>={args.rs_min:g}")
+    if filters["rs_min"] is not None: extras.append(f"RS>={filters['rs_min']:g}")
     if args.regime_gate:        extras.append("regime gate")
     if (args.tgt_mult, args.sl_mult) != (3.0, 1.5):
         extras.append(f"exits {args.tgt_mult:g}x/{args.sl_mult:g}x ATR")

@@ -20,6 +20,7 @@ import numpy as np
 from kiteconnect import KiteConnect
 
 import event_risk
+import fundamentals as _fundamentals
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -1015,19 +1016,52 @@ def score_stock(indicators: dict, filters: dict) -> dict:
 
     atr = indicators["atr"]
     price = indicators["current_price"]
-    target_pct = round((atr * 3) / price * 100, 2)
-    sl_pct     = round((atr * 1.5) / price * 100, 2)
-    rr         = round(target_pct / sl_pct, 2) if sl_pct > 0 else 0
-    # target_pct stays the honest 3x ATR number — no flooring to
-    # min_target_pct. Flooring made the min_target_pct rejection in
-    # analyse_stock unreachable, so low-volatility stocks that cannot
-    # plausibly move 5% in 1-2 weeks passed with an inflated target.
+
+    # Realistic 2-3 week target = min(volatility reach, structural ceiling).
+    # Reach: 3x ATR is how far this stock plausibly travels in ~10-15
+    # sessions. Ceiling: the nearest overhead supply level — trapped buyers
+    # at the 20-day high sell into any rally that reaches them, so a target
+    # beyond that wall is fantasy until the wall breaks. A fresh breakout
+    # (at/above the 20d high) answers to the 52-week high instead; above
+    # both there is open sky and volatility is the only limit. No flooring
+    # to min_target_pct — the analyse_stock gate needs the honest number.
+    reach_pct = round((atr * 3) / price * 100, 2)
+    target_pct, target_basis = reach_pct, "atr"
+    if filters.get("headroom_check", True):
+        ceiling, cbasis = None, ""
+        res_dist = indicators.get("sr", {}).get("resistance_dist_pct")
+        if res_dist is not None and res_dist > 0.5:
+            ceiling, cbasis = res_dist, "resistance"
+        else:
+            h52_dist = indicators.get("52w", {}).get("dist_from_high_pct")
+            if h52_dist is not None and h52_dist < -0.5:
+                ceiling, cbasis = -h52_dist, "52w_high"
+        if ceiling is not None and ceiling < target_pct:
+            target_pct, target_basis = round(ceiling, 2), cbasis
+
+    # Stop placement: structural beats volatility. A stop just below the
+    # 20-day support is a level other traders defend; a pure ATR stop is a
+    # round number in a vacuum that intraday noise wicks through. Use the
+    # structural stop when it lands in a sane band around the ATR stop —
+    # tighter than 0.7x ATR is noise distance, wider than 2x ATR ruins R:R.
+    atr_sl_pct = (atr * 1.5) / price * 100
+    sl_pct, sl_basis = atr_sl_pct, "atr"
+    sup_dist = indicators.get("sr", {}).get("support_dist_pct")
+    if sup_dist is not None and sup_dist > 0:
+        structural = sup_dist + 0.5   # 0.5% below the support level itself
+        if 0.7 * atr_sl_pct <= structural <= 2.0 * atr_sl_pct:
+            sl_pct, sl_basis = structural, "support"
+    sl_pct = round(sl_pct, 2)
+    rr = round(target_pct / sl_pct, 2) if sl_pct > 0 else 0
 
     return {
         "score": score,
         "breakdown": breakdown,
         "target_pct": target_pct,
+        "target_basis": target_basis,
+        "reach_pct": reach_pct,
         "sl_pct": sl_pct,
+        "sl_basis": sl_basis,
         "rr": rr,
         "signal": "strong_buy" if score >= 75 else "moderate" if score >= 60 else "watch",
     }
@@ -1184,6 +1218,18 @@ class SwingScreener:
         if df is None or len(df) < 30:
             return None
 
+        # Liquidity floor: 20-session average daily turnover. An illiquid
+        # name can gap through the stop or hit circuit limits — the SL is
+        # fiction. Index constituents pass trivially; this protects the
+        # all-stocks universe. 0 = gate off.
+        min_turnover_cr = float(filters.get("min_turnover_cr", 5.0))
+        if min_turnover_cr > 0:
+            turnover_cr = float((df["close"] * df["volume"]).tail(20).mean()) / 1e7
+            if turnover_cr < min_turnover_cr:
+                log.info(f"  {symbol} rejected — avg daily turnover "
+                         f"₹{turnover_cr:.1f}cr < ₹{min_turnover_cr:.0f}cr floor")
+                return None
+
         current_price = float(df["close"].iloc[-1])   # fallback: last historical close
 
         # Override with live LTP so the displayed price matches the Kite app
@@ -1214,15 +1260,33 @@ class SwingScreener:
             return None
         if indicators["volume_ratio"] < filters.get("min_vol_surge", 1.2):
             return None
+        # Relative-strength floor: a stock merely tracking the index has no
+        # edge of its own for a 1-2 week continuation trade. Backtest (2y
+        # Nifty 50): RS20 < 0 was the worst bucket in every configuration
+        # tested; requiring RS >= 0 flipped expectancy positive. None (index
+        # data unavailable) fails open. Set rs_min to None/off to disable.
+        rs_min = filters.get("rs_min", 0.0)
+        if rs_min is not None:
+            rs20 = indicators.get("rs_nifty_20d")
+            if rs20 is not None and rs20 < rs_min:
+                log.info(f"  {symbol} rejected — RS vs Nifty {rs20:+.1f}% "
+                         f"below {rs_min:+.1f}% floor")
+                return None
 
         # ── Daily scoring ────────────────────────────────────────────────────
         scoring = score_stock(indicators, filters)
         if scoring["score"] < filters.get("min_score", 60):
             return None
-        # Volatility gate: 3x ATR must span the mandated move. A stock whose
-        # ATR-based target is below min_target_pct cannot plausibly deliver
-        # the 5-10% swing in 1-2 weeks regardless of its score.
+        # Realistic-target gate: target_pct is min(3x ATR reach, structural
+        # ceiling) — see score_stock. A stock that cannot realistically make
+        # min_target_pct in 2-3 weeks (too slow, or a resistance wall too
+        # close) drops out here on honest numbers instead of an inflated
+        # ATR target being waved through.
         if scoring["target_pct"] < filters.get("min_target_pct", 5.0):
+            if scoring["target_basis"] != "atr":
+                log.info(f"  {symbol} rejected — realistic target only "
+                         f"+{scoring['target_pct']:.1f}% (capped at "
+                         f"{scoring['target_basis']})")
             return None
 
         # ── Earnings gate (after score gates — one yfinance call per real
@@ -1271,6 +1335,28 @@ class SwingScreener:
                 log.info(f"  {symbol} rejected — weekly trend bearish")
                 return None
 
+        # ── Fundamentals (qualified candidates only — one 24h-cached
+        # yfinance fetch per survivor, same cost pattern as the earnings
+        # gate). Advisory, not a gate: there is no backtest evidence for a
+        # fundamental cutoff, so weak numbers raise a caution flag instead
+        # of silently dropping the stock.
+        fund = None
+        if filters.get("attach_fundamentals", True):
+            try:
+                f = _fundamentals.fetch(symbol)
+                if not f.get("error"):
+                    fund = {
+                        "pe":        f.get("pe"),
+                        "roe":       f.get("roe"),
+                        "de_ratio":  f.get("de_ratio"),
+                        "rev_growth": f.get("rev_growth"),
+                        "piotroski": (f.get("piotroski") or {}).get("score"),
+                        "quality":   (f.get("magic_formula") or {}).get("quality"),
+                        "signal":    f.get("signal"),
+                    }
+            except Exception as e:
+                log.debug(f"  {symbol} fundamentals unavailable: {e}")
+
         return {
             "symbol":     symbol,
             "sector":     sector,
@@ -1279,6 +1365,7 @@ class SwingScreener:
             "scoring":    scoring,
             "weekly":     weekly_trend,
             "price_action": pa,
+            "fundamentals": fund,
             "event_risk": {
                 "surveillance":     surveillance,
                 "earnings_date":    earnings["date"],

@@ -29,6 +29,21 @@ _IST = timezone(timedelta(hours=5, minutes=30))
 # up capital — exit at market and recycle into a fresh signal.
 TIME_STOP_SESSIONS = 10
 
+# Position sizing: risk a fixed slice of the notional account per trade,
+# so one stopped-out position can never dominate the book the way an
+# arbitrary share count can. Mirrored in the UI (swing_trade_screener.html).
+ACCOUNT_CAPITAL = 500_000     # notional paper account
+RISK_PCT_PER_TRADE = 1.0      # % of account lost if the stop is hit
+
+
+def suggest_qty(entry_price: float, sl_pct: float) -> int:
+    """Share count such that hitting the SL loses RISK_PCT_PER_TRADE of
+    ACCOUNT_CAPITAL. Returns 0 when the inputs can't size a position."""
+    per_share_risk = float(entry_price) * float(sl_pct) / 100
+    if per_share_risk <= 0:
+        return 0
+    return int((ACCOUNT_CAPITAL * RISK_PCT_PER_TRADE / 100) // per_share_risk)
+
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 

@@ -304,6 +304,15 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
         </select>
         <div class="val" style="font-size:11px;color:var(--color-text-info);font-weight:400;margin-top:6px">Filters out downtrending stocks</div>
       </div>
+      <div class="ctrl" style="border:0.5px solid var(--color-border-info);border-radius:var(--border-radius-md)">
+        <label style="color:var(--color-text-info)">RS vs Nifty filter</label>
+        <select id="rsFilter">
+          <option value="0" selected>Outperformers only (RS ≥ 0)</option>
+          <option value="3">Strong leaders (RS ≥ +3)</option>
+          <option value="-100">Off — any relative strength</option>
+        </select>
+        <div class="val" style="font-size:11px;color:var(--color-text-info);font-weight:400;margin-top:6px">Backtest: RS &lt; 0 was the worst bucket</div>
+      </div>
     </div>
 
     <div id="customSection" style="display:none;margin-top:1rem">
@@ -484,6 +493,8 @@ const CARD_STATS={};
 const SECTOR_NAMES={nifty_bank:'Banking',nifty_it:'IT',nifty_auto:'Auto',nifty_pharma:'Pharma',nifty_fmcg:'FMCG',nifty_financial:'Fin Services',nifty_metal:'Metal',nifty_realty:'Realty',nifty_psu_bank:'PSU Bank',nifty_energy:'Energy',nifty_infra:'Infra',nifty_media:'Media',nifty_healthcare:'Healthcare',nifty_consumer_durables:'Cons. Durables',nifty_chemicals:'Chemicals'};
 const PAPER_MODERATE_CAPITAL_CAP=15000;
 const PAPER_LOW_SCORE_CAPITAL_CAP=10000;
+const PAPER_ACCOUNT_CAPITAL=500000;   // mirrors swing_paper_broker.ACCOUNT_CAPITAL
+const PAPER_RISK_PCT=1.0;             // mirrors swing_paper_broker.RISK_PCT_PER_TRADE
 
 async function fetchSavedKiteToken() {
   const backend = document.getElementById('backendUrl').value.trim().replace(/\/$/,'') || BACKEND;
@@ -693,6 +704,7 @@ async function runLive(){
     min_target_pct:document.getElementById('targetRet').value,
     weekly_filter: wf !== 'off',
     weekly_required: wf === 'off' ? 'bullish' : wf,
+    rs_min: document.getElementById('rsFilter').value,
     top_n:20
   });
   const tick=setInterval(()=>{
@@ -767,6 +779,8 @@ function render(results,isLive){
     const pa = r.price_action || {active:[],pa_score:0,pattern_summary:'None',has_pattern:false,bearish_patterns:[],is_bearish_warning:false};
     const ev = r.event_risk || {};
     const evDays = ev.days_to_earnings;
+    const fund = r.fundamentals || null;
+    const tgtBasis = api ? (r.scoring.target_basis || 'atr') : 'atr';
     const baseScore = r.scoring ? (r.scoring.base_score || sc) : sc;
     const paBoost   = r.scoring ? (r.scoring.pa_score || 0) : 0;
     const wtrend = w.trend || 'neutral';
@@ -801,10 +815,11 @@ function render(results,isLive){
           else if(gc.ma50&&gc.ma200&&gc.ma50<gc.ma200){const abv=gc.above_ma200;b.push(pill('rgba(239,68,68,.12)','#fca5a5',abv?'⚠ False-breakout risk':'↗ Recovery below MA200',abv?'MA50 below MA200: −18 pts':'Recovering below MA200: −12 pts'));}
           if(ev.surveillance) b.push(pill('rgba(239,68,68,.2)','#f87171',`⚠ NSE ${ev.surveillance}`,'NSE surveillance list — 100% margin and tight circuit limits; swing exits can get trapped for days'));
           if(evDays!=null&&evDays<=21) b.push(pill(`rgba(251,191,36,${evDays<=10?'.2':'.12'})`,'#f59e0b',`📅 Earnings in ${evDays}d`,`Earnings on ${ev.earnings_date} — a 1-2 week hold that straddles a results day is gap risk, not a technical trade`));
+          if(fund&&fund.signal==='weak') b.push(pill('rgba(251,191,36,.15)','#f59e0b',`⚠ Weak fundamentals (${fund.piotroski}/9)`,'Piotroski F-Score 3 or less — deteriorating balance-sheet health; fine for a quick technical trade, risky if the trade turns into a hold'));
           return b.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${b.join('')}</div>`:'';
         })()}
       </div>
-      <div><div style="font-size:13px;font-weight:500;color:var(--color-text-success)">+${(+tgt).toFixed(1)}% tgt</div><div style="font-size:11px;color:var(--color-text-danger)">-${(+sl).toFixed(1)}% SL</div></div>
+      <div><div style="font-size:13px;font-weight:500;color:var(--color-text-success)">+${(+tgt).toFixed(1)}% tgt</div><div style="font-size:11px;color:var(--color-text-danger)">-${(+sl).toFixed(1)}% SL</div>${tgtBasis!=='atr'?`<div style="font-size:10px;color:var(--color-text-tertiary);white-space:nowrap" title="Realistic 2-3 week move: target capped at the nearest overhead level instead of raw 3x ATR (+${(r.scoring.reach_pct||0).toFixed(1)}%)">${tgtBasis==='resistance'?'⛰ at 20-day wall':'⛰ at 52w high'}</div>`:''}</div>
       <div style="display:flex;flex-direction:column;gap:4px">
         <button onclick="event.stopPropagation();openChart('${sym}','D')" style="font-size:11px;padding:3px 8px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;cursor:pointer;color:var(--color-text-secondary);white-space:nowrap">Daily</button>
         <button onclick="event.stopPropagation();openChart('${sym}','W')" style="font-size:11px;padding:3px 8px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;cursor:pointer;color:var(--color-text-secondary);white-space:nowrap">Weekly</button>
@@ -832,7 +847,16 @@ function render(results,isLive){
         ${ind.rs_nifty_20d!=null?`<span class="ip ${ind.rs_nifty_20d>0?'ib':'id'}" title="20-day return minus Nifty 50 — outperformance vs the index is the strongest 1-2 week continuation signal">RS vs Nifty ${ind.rs_nifty_20d>0?'+':''}${(+ind.rs_nifty_20d).toFixed(1)}%</span>`:''}
         ${ev.surveillance?`<span class="ip" style="background:rgba(239,68,68,.15);color:#f87171" title="NSE surveillance list — 100% margin and tight circuit limits; swing exits can get trapped for days">⚠ NSE ${ev.surveillance}</span>`:''}
         ${evDays!=null?`<span class="ip" style="color:#f59e0b" title="A 1-2 week hold that straddles a results day is gap risk, not a technical trade">📅 Earnings ${ev.earnings_date} (${evDays}d)</span>`:''}
+        ${tgtBasis!=='atr'?`<span class="ip" title="Volatility alone reaches +${(r.scoring.reach_pct||0).toFixed(1)}%, but the nearest overhead level is closer — the shown target is the realistic 2-3 week move">⛰ Target capped at ${tgtBasis==='resistance'?'20-day high':'52-week high'}</span>`:''}
       </div>
+      ${fund?`<div class="ir" style="margin-top:6px">
+        <span class="ip" style="font-weight:600;border-style:dashed">Fundamentals</span>
+        ${fund.pe!=null?`<span class="ip">PE ${(+fund.pe).toFixed(1)}</span>`:''}
+        ${fund.roe!=null?`<span class="ip ${fund.roe>=15?'ib':''}">ROE ${(+fund.roe).toFixed(1)}%</span>`:''}
+        ${fund.rev_growth!=null?`<span class="ip ${fund.rev_growth>0?'ib':'id'}">Rev growth ${fund.rev_growth>0?'+':''}${(+fund.rev_growth).toFixed(1)}%</span>`:''}
+        ${fund.piotroski!=null?`<span class="ip ${fund.piotroski>=7?'ib':fund.piotroski<=3?'id':''}" title="Piotroski F-Score — 9-point balance-sheet health check; 7+ strong, 3 or less weak">Piotroski ${fund.piotroski}/9</span>`:''}
+        ${fund.quality&&fund.quality!=='—'?`<span class="ip">${fund.quality}</span>`:''}
+      </div>`:''}
       <div class="dg">
         <div class="di"><div class="dil">Target price</div><div class="div" style="color:var(--color-text-success)">₹${Math.round(price*(1+tgt/100)).toLocaleString('en-IN')}</div></div>
         <div class="di"><div class="dil">Stop loss</div><div class="div" style="color:var(--color-text-danger)">₹${Math.round(price*(1-sl/100)).toLocaleString('en-IN')}</div></div>
@@ -1348,7 +1372,7 @@ function applyPreset(name){
   set('weeklyFilter',p.weekly);
 }
 
-const FILTER_DEFAULTS={universe:'nifty50',rsiMin:45,rsiMax:68,vol:1.5,score:60,target:'5',weekly:'bullish'};
+const FILTER_DEFAULTS={universe:'nifty50',rsiMin:45,rsiMax:68,vol:1.5,score:60,target:'5',weekly:'bullish',rs:'0'};
 
 function resetFilters(){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
@@ -1360,6 +1384,7 @@ function resetFilters(){
   set('minScore', FILTER_DEFAULTS.score);     txt('sv',  FILTER_DEFAULTS.score);
   set('targetRet',FILTER_DEFAULTS.target);
   set('weeklyFilter', FILTER_DEFAULTS.weekly);
+  set('rsFilter', FILTER_DEFAULTS.rs);
 }
 
 function toggleFilters(){
@@ -1613,7 +1638,7 @@ function exportToExcel(){
   };
   const num=v=>{const x=parseFloat(v);return isFinite(x)?parseFloat(x.toFixed(2)):'';};
 
-  const headers=['Rank','Symbol','Company','Sector','Price','Signal','Score','RSI','Vol Ratio','1D%','5D%','Target%','SL%','R:R','ADX','MACD','BB%','MA20%','Mom5D','Mom20D','RS vs Nifty 20D','Weekly','Price Action','Support','Resistance','Earnings Date','Surveillance'];
+  const headers=['Rank','Symbol','Company','Sector','Price','Signal','Score','RSI','Vol Ratio','1D%','5D%','Target%','Target Basis','SL%','R:R','ADX','MACD','BB%','MA20%','Mom5D','Mom20D','RS vs Nifty 20D','Weekly','Price Action','Support','Resistance','Earnings Date','Surveillance','Piotroski'];
 
   const rows=LAST_RESULTS.map((r,i)=>{
     const api=!!r.scoring;
@@ -1633,6 +1658,7 @@ function exportToExcel(){
       num(ind.chg_1d||r.chg1d),
       num(ind.chg_5d||ind.momentum_5d||r.chg5d),
       num(api?r.scoring.target_pct:r.target),
+      api?(r.scoring.target_basis||'atr'):'atr',
       num(api?r.scoring.sl_pct:r.sl),
       num(api?r.scoring.rr:r.rr),
       num(ind.adx||r.adx),
@@ -1647,7 +1673,8 @@ function exportToExcel(){
       num(ind.sr&&typeof ind.sr==='object'?ind.sr.support:''),
       num(ind.sr&&typeof ind.sr==='object'?ind.sr.resistance:''),
       r.event_risk&&r.event_risk.earnings_date?r.event_risk.earnings_date:'',
-      r.event_risk&&r.event_risk.surveillance?r.event_risk.surveillance:''
+      r.event_risk&&r.event_risk.surveillance?r.event_risk.surveillance:'',
+      r.fundamentals&&r.fundamentals.piotroski!=null?r.fundamentals.piotroski:''
     ];
   });
 
@@ -1925,10 +1952,25 @@ async function openPaperBuyModal(sym, price, tgtPct, slPct, score, signal) {
   document.getElementById('pmPrice').textContent  = '₹' + price.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
   document.getElementById('pmTarget').textContent = '₹' + tgt.toLocaleString('en-IN') + ' (+' + tgtPct.toFixed(1) + '%)';
   document.getElementById('pmSL').textContent     = '₹' + sl.toLocaleString('en-IN') + ' (−' + slPct.toFixed(1) + '%)';
-  document.getElementById('pmQty').value = 1;
   const capRule = paperBuyCap(_paperBuyCtx);
   const existingCapital = existing ? Number(existing.entry_price || 0) * Number(existing.qty || 0) : 0;
-  document.getElementById('pmQty').max = capRule ? Math.max(0, Math.floor((capRule.cap - existingCapital) / price)) : '';
+  const capQty = capRule ? Math.max(0, Math.floor((capRule.cap - existingCapital) / price)) : Infinity;
+  // Risk-based size: hitting the SL should cost PAPER_RISK_PCT of the account.
+  const perShareRisk = price * slPct / 100;
+  const riskQty = perShareRisk > 0 ? Math.floor(PAPER_ACCOUNT_CAPITAL * PAPER_RISK_PCT / 100 / perShareRisk) : 0;
+  const suggested = Math.max(1, Math.min(riskQty, capQty === Infinity ? riskQty : capQty));
+  document.getElementById('pmQty').value = suggested;
+  document.getElementById('pmQty').max = capRule ? capQty : '';
+  const sizeHint = document.getElementById('pmSizeHint');
+  if (sizeHint) {
+    if (riskQty > 0) {
+      const riskAmt = Math.round(PAPER_ACCOUNT_CAPITAL * PAPER_RISK_PCT / 100);
+      sizeHint.style.display = 'block';
+      sizeHint.textContent = `Suggested ${riskQty.toLocaleString('en-IN')} shares — a stop-out loses ~₹${riskAmt.toLocaleString('en-IN')} (${PAPER_RISK_PCT}% of ₹${(PAPER_ACCOUNT_CAPITAL/100000).toFixed(0)}L paper capital)` + (capRule && riskQty > capQty ? `, clamped to ${capQty} by the ${capRule.reason} cap` : '') + '.';
+    } else {
+      sizeHint.style.display = 'none';
+    }
+  }
   updateModalCapital();
   document.getElementById('paperModal').classList.add('open');
   document.getElementById('pmQty').focus();
@@ -2252,10 +2294,12 @@ function renderPaperPositions(data) {
     closedEl.innerHTML = '<div style="font-size:13px;color:var(--color-text-tertiary);padding:.5rem 0">No closed trades yet.</div>';
   } else {
     let ch = `<table class="pt-table"><thead><tr>
-      <th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Gross P&amp;L</th><th>Charges</th><th>Net P&amp;L</th><th>Reason</th><th>Closed</th>
+      <th>Symbol</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Gross P&amp;L</th><th>Charges</th><th>Net P&amp;L</th><th title="Net profit as % of capital invested (after charges)">Return %</th><th>Reason</th><th>Closed</th>
     </tr></thead><tbody>`;
     closed.forEach(t => {
       const rCls = t.exit_reason==='TARGET'?'pt-r-target':t.exit_reason==='SL'?'pt-r-sl':'pt-r-manual';
+      const invested = (t.entry_price||0) * (t.qty||0);
+      const retPct = invested ? (t.net_pnl / invested * 100) : 0;
       ch += `<tr>
         <td><div class="pt-sym">${t.symbol}</div><div class="pt-sub">${t.signal||''}</div></td>
         <td>${t.qty}</td>
@@ -2264,6 +2308,7 @@ function renderPaperPositions(data) {
         <td style="${pnlColor(t.gross_pnl)}">${fmtPnl(t.gross_pnl)}</td>
         <td style="color:var(--color-text-secondary)">₹${(t.charges||0).toFixed(2)}</td>
         <td style="${pnlColor(t.net_pnl)}">${fmtPnl(t.net_pnl)}</td>
+        <td style="${pnlColor(t.net_pnl)};font-weight:600">${retPct>=0?'+':''}${retPct.toFixed(2)}%</td>
         <td><span class="pt-reason ${rCls}">${t.exit_reason||'MANUAL'}</span></td>
         <td style="font-size:11px;color:var(--color-text-secondary)">${fmtDt(t.exit_ts)}</td>
       </tr>`;
@@ -2317,6 +2362,7 @@ window.addEventListener('load', async () => {
              oninput="updateModalCapital()" onkeydown="if(event.key==='Enter')confirmPaperBuy()">
     </div>
     <div class="pt-modal-row"><span class="pt-modal-lbl">Capital deployed</span><span class="pt-modal-val" id="pmCapital">₹0</span></div>
+    <div id="pmSizeHint" style="display:none;font-size:11px;line-height:1.45;margin-top:.6rem;padding:8px 10px;border-radius:var(--border-radius-md);background:var(--color-background-success);color:var(--color-text-success);border:0.5px solid var(--color-border-tertiary)"></div>
     <div id="pmAverageInfo" style="display:none;font-size:11px;line-height:1.45;margin-top:.6rem;padding:8px 10px;border-radius:var(--border-radius-md);background:var(--color-background-info);color:var(--color-text-info);border:0.5px solid var(--color-border-tertiary)"></div>
     <div id="pmRiskWarn" style="display:none;font-size:11px;line-height:1.4;margin-top:.6rem;padding:8px 10px;border-radius:var(--border-radius-md);background:rgba(255,179,71,.12);border:0.5px solid rgba(255,179,71,.25)"></div>
     <div class="pt-modal-actions">
