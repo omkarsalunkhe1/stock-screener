@@ -31,7 +31,7 @@
   --color-border-secondary:rgba(255,255,255,0.18);
   --color-border-primary:rgba(255,255,255,0.28);
 }}
-body{font-family:var(--font-sans);color:var(--color-text-primary);background:var(--color-background-primary);padding:1.25rem clamp(1rem,3vw,2.5rem);max-width:1600px;margin:0 auto}
+body{font-family:var(--font-sans);color:var(--color-text-primary);background:var(--color-background-primary);padding:.85rem clamp(1rem,3vw,2.5rem) 1.25rem;max-width:1600px;margin:0 auto}
 select,input[type=text],input[type=range],button{font-family:inherit;font-size:13px;color:var(--color-text-primary);background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 8px;outline:none}
 select:focus,input:focus{border-color:var(--color-border-primary)}
 input[type=range]{padding:0;border:none;background:transparent;-webkit-appearance:none;appearance:none;width:100%;height:20px;cursor:pointer}
@@ -42,12 +42,10 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.12)}
 input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--color-text-info);outline-offset:2px}
 input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid var(--color-text-info);outline-offset:2px}
-.conn-bar{display:flex;align-items:center;gap:10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:1.25rem;flex-wrap:wrap}
+.conn-bar{display:flex;align-items:center;gap:10px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:8px 14px;margin-bottom:.75rem;flex-wrap:wrap}
 .conn-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .dot-live{background:#3B6D11}.dot-demo{background:#854F0B}.dot-err{background:#A32D2D}.dot-checking{background:#888780}
 .conn-label{font-size:12px;font-weight:500;color:var(--color-text-secondary);flex:1;min-width:160px}
-.conn-inputs{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.conn-inputs input{width:200px}
 .funds-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .funds-chip{display:none;align-items:center;gap:8px;font-size:12px;padding:4px 10px;border-radius:99px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary);color:var(--color-text-secondary);white-space:nowrap}
 .funds-chip.ok{display:inline-flex;color:var(--color-text-success);background:var(--color-background-success)}
@@ -67,7 +65,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 .ctrl .val{font-size:12px;font-weight:500;margin-top:auto;padding-top:4px}
 .scan-btn{width:100%;padding:10px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);font-size:14px;font-weight:500;cursor:pointer;color:var(--color-text-primary);margin-bottom:1.25rem;transition:background .15s}
 .scan-btn:hover{background:var(--color-background-secondary)}
-.scan-btn:disabled{opacity:.5;cursor:not-allowed}
+.scan-btn:disabled,#scanBtn:disabled{opacity:.5;cursor:not-allowed}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px;margin-bottom:1.25rem}
 .stat{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
 .stat-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:2px}
@@ -106,7 +104,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 .empty{text-align:center;padding:2rem;color:var(--color-text-secondary);font-size:13px}
 .disc{font-size:11px;color:var(--color-text-tertiary);margin-top:1rem;padding:8px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);line-height:1.6}
 .ts-lbl{font-size:11px;color:var(--color-text-tertiary);margin-left:auto}
-.tab-bar{display:flex;gap:0;margin-bottom:1.25rem;border-bottom:1px solid var(--color-border-tertiary)}
+.tab-bar{display:flex;gap:0;margin-bottom:.85rem;border-bottom:1px solid var(--color-border-tertiary)}
 .tab-btn{padding:10px 20px;font-size:14px;font-weight:500;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:var(--color-text-secondary);font-family:var(--font-sans);transition:color .15s,border-color .15s}
 .tab-btn:hover{color:var(--color-text-primary)}
 .tab-btn.active{color:var(--color-text-primary);border-bottom-color:var(--color-text-primary)}
@@ -194,12 +192,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 
 <div class="conn-bar">
   <div class="conn-dot dot-checking" id="connDot"></div>
-  <div class="conn-label" id="connLabel">Enter backend URL and Kite access_token to enable live data</div>
-  <div class="conn-inputs">
-    <input type="text" id="backendUrl" placeholder="http://localhost:8000" value="http://localhost:8000">
-    <input type="password" id="accessToken" placeholder="Kite access_token" autocomplete="off" style="width:170px">
-    <button class="btn-sm" onclick="checkConn()">Connect</button>
-  </div>
+  <div class="conn-label" id="connLabel">Connecting to backend…</div>
   <div class="funds-strip">
     <button class="btn-sm" id="fundsBtn" onclick="loadFunds()" disabled>Funds</button>
     <span class="funds-chip" id="fundsChip">Funds unavailable</span>
@@ -214,21 +207,27 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 </div>
 
 <div id="tab-screener" class="tab-content active">
-<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">
-  <h2>Swing trade screener — 1–3 week horizon</h2>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:2px">
+  <h2 style="margin-bottom:0">Swing trade screener — 1–3 week horizon</h2>
+  <div style="display:flex;align-items:center;gap:6px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:99px;padding:3px 4px" title="Choose AI analysis provider">
+    <span style="font-size:10px;color:var(--color-text-tertiary);padding:0 4px;letter-spacing:.04em">AI</span>
+    <button id="ai-toggle-claude" onclick="setAIProvider('claude')" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:none;cursor:pointer;transition:all .15s;background:rgba(167,139,250,.2);color:#a78bfa">✦ Claude</button>
+    <button id="ai-toggle-local"  onclick="setAIProvider('local')"  style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:var(--color-text-tertiary)">⚡ Local</button>
+  </div>
 </div>
-<p class="sub">Live mode fetches real NSE OHLCV data via your Kite Connect backend. Demo mode uses simulated-but-realistic data.</p>
+<p class="sub" style="margin-bottom:10px">Live mode fetches real NSE OHLCV data via your Kite Connect backend. Demo mode uses simulated-but-realistic data.</p>
 
 <!-- ── Collapsible filter panel ──────────────────────────────────────────── -->
-<div class="filter-header" id="filterHeader" onclick="toggleFilters()">
+<div class="filter-header collapsed" id="filterHeader" onclick="toggleFilters()">
   <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;overflow:hidden">
     <span style="font-size:13px;font-weight:500;white-space:nowrap">Filters</span>
-    <div id="filterSummary" style="display:none;flex-wrap:wrap;gap:5px;align-items:center;overflow:hidden"></div>
+    <div id="filterSummary" style="display:flex;flex-wrap:wrap;gap:5px;align-items:center;overflow:hidden"></div>
   </div>
   <button class="btn-sm" onclick="event.stopPropagation();resetFilters()" style="flex-shrink:0;white-space:nowrap;color:var(--color-text-secondary)">↺ Reset</button>
-  <button id="filterToggleBtn" class="btn-sm" onclick="event.stopPropagation();toggleFilters()" style="flex-shrink:0;white-space:nowrap">▲ Hide</button>
+  <button id="filterToggleBtn" class="btn-sm" onclick="event.stopPropagation();toggleFilters()" style="flex-shrink:0;white-space:nowrap">▼ Show</button>
+  <button class="btn-sm" id="scanBtn" onclick="event.stopPropagation();runScreen()" style="flex-shrink:0;white-space:nowrap;background:var(--color-text-primary);color:var(--color-background-primary);border-color:transparent;font-weight:600">Run screener</button>
 </div>
-<div id="filterPanel">
+<div id="filterPanel" class="collapsed">
   <div class="filter-inner">
 
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
@@ -328,14 +327,6 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
   </div><!-- /.filter-inner -->
 </div><!-- /#filterPanel -->
 
-<div style="display:flex;align-items:center;gap:10px;margin-top:.75rem;flex-wrap:wrap">
-  <button class="scan-btn" id="scanBtn" onclick="runScreen()" style="margin-top:0">Run screener</button>
-  <div style="display:flex;align-items:center;gap:6px;margin-left:auto;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:99px;padding:3px 4px" title="Choose AI analysis provider">
-    <span style="font-size:10px;color:var(--color-text-tertiary);padding:0 4px;letter-spacing:.04em">AI</span>
-    <button id="ai-toggle-claude" onclick="setAIProvider('claude')" style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:none;cursor:pointer;transition:all .15s;background:rgba(167,139,250,.2);color:#a78bfa">✦ Claude</button>
-    <button id="ai-toggle-local"  onclick="setAIProvider('local')"  style="font-size:11px;font-weight:500;padding:3px 10px;border-radius:99px;border:none;cursor:pointer;transition:all .15s;background:transparent;color:var(--color-text-tertiary)">⚡ Local</button>
-  </div>
-</div>
 <div class="ebanner" id="ebanner"></div>
 <div class="plabel" id="plabel"></div>
 <div class="pbar" id="pbar"><div class="pfill" id="pfill" style="width:0%"></div></div>
@@ -460,7 +451,7 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 <div class="disc">Educational use only. Live mode requires Kite Connect API (₹500/month base + ₹2000/month historical data add-on). This is NOT financial advice. Consult a SEBI-registered advisor before trading.</div>
 
 <script>
-let IS_LIVE=false,BACKEND='http://localhost:8000',TOKEN='',UNIVERSE_SIZES={},LAST_FUNDS=null;
+let IS_LIVE=false,BACKEND=location.protocol.startsWith('http')?location.origin:'http://localhost:8000',TOKEN='',UNIVERSE_SIZES={},LAST_FUNDS=null;
 let ALL_SYMBOLS=[],CUSTOM_TAGS=[],LAST_RESULTS=[],LAST_SCAN_LABEL='';
 let SECTOR_PERF={};
 let _paperBuyCtx=null, _paperPollId=null, _paperOpenCache=[];   // paper trading globals
@@ -472,9 +463,8 @@ const PAPER_ACCOUNT_CAPITAL=500000;   // mirrors swing_paper_broker.ACCOUNT_CAPI
 const PAPER_RISK_PCT=1.0;             // mirrors swing_paper_broker.RISK_PCT_PER_TRADE
 
 async function fetchSavedKiteToken() {
-  const backend = document.getElementById('backendUrl').value.trim().replace(/\/$/,'') || BACKEND;
   try {
-    const r = await fetch(backend + '/auth/saved-token', {signal:AbortSignal.timeout(4000)});
+    const r = await fetch(BACKEND + '/auth/saved-token', {signal:AbortSignal.timeout(4000)});
     if (!r.ok) return null;
     const d = await r.json();
     return d.has_token && d.access_token ? d : null;
@@ -483,31 +473,10 @@ async function fetchSavedKiteToken() {
   }
 }
 
-async function loadSavedKiteToken(autoConnect=false) {
-  const tokenInput = document.getElementById('accessToken');
-  if (tokenInput.value.trim()) {
-    if (autoConnect) await checkConn();
-    return true;
-  }
-  const saved = await fetchSavedKiteToken();
-  if (!saved) return false;
-  tokenInput.value = saved.access_token;
-  TOKEN = saved.access_token;
-  const who = saved.user_name ? ` for ${saved.user_name}` : '';
-  setConn('checking', `Loaded saved Kite token${who}`);
-  if (autoConnect) await checkConn();
-  return true;
-}
-
 async function checkConn(){
-  BACKEND=document.getElementById('backendUrl').value.trim().replace(/\/$/,'');
-  TOKEN=document.getElementById('accessToken').value.trim();
   if(!TOKEN){
     const saved = await fetchSavedKiteToken();
-    if(saved){
-      TOKEN = saved.access_token;
-      document.getElementById('accessToken').value = TOKEN;
-    }
+    if(saved) TOKEN = saved.access_token;
   }
   IS_LIVE=false;
   setConn('checking','Checking connection...');
@@ -541,7 +510,7 @@ async function checkConn(){
         setConn('demo',`Token validation failed (${e.message}). Running in demo mode.`);
       }
     } else {
-      setConn('demo','Server reachable — enter your Kite access_token for live data');
+      setConn('demo','Server reachable — no saved Kite token. Log in to Kite, then refresh this page.');
     }
 
     // 3. Background fetches (run regardless of live/demo so symbol list + universe sizes load)
@@ -648,7 +617,7 @@ async function runScreen(){
   const univ=document.getElementById('universe').value;
   btn.disabled=true;hideErr();
   if(univ==='all_stocks'){
-    if(!IS_LIVE||!TOKEN){showErr('Full scan requires live connection — enter backend URL and access token, then click Connect.');btn.disabled=false;return;}
+    if(!IS_LIVE||!TOKEN){showErr('Full scan requires a live connection — no valid Kite token on the server. Log in to Kite, then refresh this page.');btn.disabled=false;return;}
     await startFullScan();
     return;
   }
@@ -1286,6 +1255,24 @@ function resetFilters(){
   set('targetRet',FILTER_DEFAULTS.target);
   set('weeklyFilter', FILTER_DEFAULTS.weekly);
   set('rsFilter', FILTER_DEFAULTS.rs);
+  updateFilterSummary();   // keep the collapsed-bar chips in sync
+}
+
+function updateFilterSummary(){
+  // Build compact summary chips for the minimised bar
+  const univEl=document.getElementById('universe');
+  const univTxt=univEl.options[univEl.selectedIndex].text;
+  const rMin=document.getElementById('rsiMin').value;
+  const rMax=document.getElementById('rsiMax').value;
+  const vol=parseFloat(document.getElementById('volSurge').value).toFixed(1);
+  const sc=document.getElementById('minScore').value;
+  const tgt=document.getElementById('targetRet').value;
+  const wfVal=document.getElementById('weeklyFilter').value;
+  const rsVal=document.getElementById('rsFilter').value;
+  const chips=[univTxt,`RSI ${rMin}–${rMax}`,`Vol ≥${vol}x`,`Score ≥${sc}`,`Target ≥${tgt}%`];
+  if(wfVal!=='off')chips.push(wfVal==='bullish'?'↑ Weekly bullish':'↑ Not bearish');
+  if(rsVal!=='-100')chips.push(`RS ≥ ${rsVal==='0'?'0':'+'+rsVal}`);
+  document.getElementById('filterSummary').innerHTML=chips.map(c=>`<span style="font-size:11px;font-weight:500;padding:2px 7px;border-radius:99px;background:var(--color-background-tertiary);color:var(--color-text-secondary);white-space:nowrap">${c}</span>`).join('');
 }
 
 function toggleFilters(){
@@ -1297,19 +1284,7 @@ function toggleFilters(){
   panel.classList.toggle('collapsed');
   header.classList.toggle('collapsed');
   if(isOpen){
-    // Build compact summary chips for the minimised bar
-    const univEl=document.getElementById('universe');
-    const univTxt=univEl.options[univEl.selectedIndex].text;
-    const rMin=document.getElementById('rsiMin').value;
-    const rMax=document.getElementById('rsiMax').value;
-    const vol=parseFloat(document.getElementById('volSurge').value).toFixed(1);
-    const sc=document.getElementById('minScore').value;
-    const tgt=document.getElementById('targetRet').value;
-    const wfEl=document.getElementById('weeklyFilter');
-    const wfVal=wfEl.value;
-    const chips=[univTxt,`RSI ${rMin}–${rMax}`,`Vol ≥${vol}x`,`Score ≥${sc}`,`Target ≥${tgt}%`];
-    if(wfVal!=='off')chips.push(wfVal==='bullish'?'↑ Weekly bullish':'↑ Not bearish');
-    summary.innerHTML=chips.map(c=>`<span style="font-size:11px;font-weight:500;padding:2px 7px;border-radius:99px;background:var(--color-background-tertiary);color:var(--color-text-secondary);white-space:nowrap">${c}</span>`).join('');
+    updateFilterSummary();
     summary.style.display='flex';
     btn.textContent='▼ Show';
   } else {
@@ -1317,6 +1292,7 @@ function toggleFilters(){
     btn.textContent='▲ Hide';
   }
 }
+updateFilterSummary();   // filters start collapsed — populate the summary chips
 
 function onUniverseChange(){
   const v=document.getElementById('universe').value;
@@ -1613,7 +1589,7 @@ async function loadPortfolio(){
   err.style.display='none';
 
   if(!IS_LIVE||!TOKEN){
-    err.textContent='Portfolio requires a live connection. Enter backend URL and access token, then click Connect.';
+    err.textContent='Portfolio requires a live connection — no valid Kite token on the server. Log in to Kite, then refresh this page.';
     err.style.display='block';
     return;
   }
@@ -2244,7 +2220,7 @@ function showPaperToast(msg) {
 
 // On page load: show paper badge if trades exist
 window.addEventListener('load', async () => {
-  await loadSavedKiteToken(true);
+  await checkConn();
   if (BACKEND) updatePaperBadge();
 });
 </script>
