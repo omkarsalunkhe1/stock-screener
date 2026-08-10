@@ -1024,6 +1024,7 @@ class PaperBuyRequest(BaseModel):
     sl_pct:     float
     signal:     str = ""
     score:      int = 0
+    mode:       str = "demo"   # "live" if taken against live Kite data, else "demo"
 
 
 SWING_MODERATE_CAPITAL_CAP = 15_000
@@ -1087,6 +1088,7 @@ def paper_buy(req: PaperBuyRequest):
         sl_pct      = req.sl_pct,
         signal      = req.signal,
         score       = req.score,
+        mode        = req.mode,
     )
     # Subscribe symbol to the live ticker so SL/target checks get real-time prices
     if _kt.is_connected():

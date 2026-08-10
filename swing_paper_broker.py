@@ -120,8 +120,15 @@ def buy(
     sl_pct:     float,
     signal:     str = "",
     score:      int = 0,
+    mode:       str = "demo",
 ) -> dict:
-    """Open a paper position, averaging into an existing open symbol if present."""
+    """Open a paper position, averaging into an existing open symbol if present.
+
+    `mode` records whether the trade was taken against live Kite data
+    ("live") or simulated demo data ("demo"), so closed trades can be
+    analysed separately later.
+    """
+    mode = "live" if str(mode).lower() == "live" else "demo"
     state        = _load()
     symbol       = symbol.upper()
     qty          = int(qty)
@@ -152,6 +159,8 @@ def buy(
         trade["sl_price"]     = round(avg_entry * (1 - sl_pct / 100), 2)
         trade["signal"]       = signal
         trade["score"]        = int(score)
+        # Preserve the position's original mode; only backfill if missing.
+        trade["mode"]         = trade.get("mode") or mode
         trade["ltp"]          = entry_price
         trade["ltp_ts"]       = now_ts
         trade["last_add_ts"]  = now_ts
@@ -181,6 +190,7 @@ def buy(
         "sl_pct":       round(float(sl_pct),     2),
         "signal":       signal,
         "score":        int(score),
+        "mode":         mode,
         "status":       "open",
         "ltp":          entry_price,
         "ltp_ts":       now_ts,
@@ -314,4 +324,33 @@ def summary(state: Optional[dict] = None) -> dict:
         "wins":          wins,
         "losses":        losses,
         "win_rate":      win_rate,
+        "by_mode":       _mode_breakdown(open_trades, closed_trades),
     }
+
+
+def _mode_breakdown(open_trades: list, closed_trades: list) -> dict:
+    """Per-mode (live/demo/untagged) realized stats for closed trades.
+
+    Trades saved before the `mode` flag existed report as "untagged".
+    """
+    out: dict = {}
+    for t in closed_trades:
+        key = t.get("mode") or "untagged"
+        b = out.setdefault(key, {"closed": 0, "wins": 0, "losses": 0,
+                                 "realized": 0.0, "charges": 0.0})
+        net = t.get("net_pnl") or 0
+        b["closed"]   += 1
+        b["wins"]     += 1 if net > 0 else 0
+        b["losses"]   += 1 if net < 0 else 0
+        b["realized"] += net
+        b["charges"]  += t.get("charges") or 0
+    open_by_mode: dict = {}
+    for t in open_trades:
+        open_by_mode[t.get("mode") or "untagged"] = open_by_mode.get(t.get("mode") or "untagged", 0) + 1
+    for key, b in out.items():
+        decided = b["wins"] + b["losses"]
+        b["win_rate"]  = round(b["wins"] / decided * 100) if decided else 0
+        b["realized"]  = round(b["realized"], 2)
+        b["charges"]   = round(b["charges"], 2)
+        b["open_count"] = open_by_mode.get(key, 0)
+    return out

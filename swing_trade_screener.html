@@ -163,6 +163,9 @@ h2{font-size:18px;font-weight:500;margin-bottom:4px}
 .pt-signal-moderate{background:rgba(255,179,71,.14);color:var(--color-text-warning)}
 .pt-signal-watch{background:var(--color-background-info);color:var(--color-text-info)}
 .pt-signal-unknown{background:var(--color-background-tertiary);color:var(--color-text-secondary)}
+.pt-mode{font-size:9px;font-weight:700;letter-spacing:.05em;padding:1px 5px;border-radius:4px;display:inline-block;margin-left:6px;vertical-align:middle}
+.pt-mode-live{background:var(--color-background-success);color:var(--color-text-success)}
+.pt-mode-demo{background:var(--color-background-tertiary);color:var(--color-text-secondary)}
 .pt-reason{font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;display:inline-block}
 .pt-r-target{background:var(--color-background-success);color:var(--color-text-success)}
 .pt-r-sl{background:var(--color-background-danger);color:var(--color-text-danger)}
@@ -1917,6 +1920,7 @@ async function confirmPaperBuy() {
         sl_pct:     _paperBuyCtx.slPct,
         signal:     _paperBuyCtx.signal,
         score:      _paperBuyCtx.score,
+        mode:       IS_LIVE ? 'live' : 'demo',
       }),
     });
     if (!r.ok) { const e = await r.json(); throw new Error(e.detail || r.statusText); }
@@ -2060,6 +2064,13 @@ function pnlColor(val) {
   if (!val && val !== 0) return '';
   return val >= 0 ? 'color:var(--color-text-success)' : 'color:var(--color-text-danger)';
 }
+function modeBadge(mode) {
+  // Small chip marking whether a paper trade was taken on live vs demo data.
+  // Trades saved before the mode flag existed have no value → no chip.
+  if (mode === 'live') return `<span class="pt-mode pt-mode-live" title="Taken against live Kite data">LIVE</span>`;
+  if (mode === 'demo') return `<span class="pt-mode pt-mode-demo" title="Taken in demo mode (simulated data)">DEMO</span>`;
+  return '';
+}
 function fmtRupee(val) {
   return '₹' + Math.round(val).toLocaleString('en-IN');
 }
@@ -2142,7 +2153,7 @@ function renderPaperPositions(data) {
       const range = t.target_price - t.sl_price;
       const prog  = range > 0 ? Math.max(0, Math.min(100, (t.ltp - t.sl_price) / range * 100)) : 50;
       th += `<tr>
-        <td><div class="pt-sym">${t.symbol}</div><div class="pt-sub">${fmtDt(t.entry_ts)}</div></td>
+        <td><div class="pt-sym">${t.symbol}${modeBadge(t.mode)}</div><div class="pt-sub">${fmtDt(t.entry_ts)}</div></td>
         <td><div class="pt-hold">${fmtHoldingDays(t.entry_ts)}</div></td>
         <td class="pt-left"><span class="pt-signal-chip ${signalMeta.cls}">${signalMeta.label}</span><div class="pt-sub">${scoreText}</div></td>
         <td>${t.qty}</td>
@@ -2178,7 +2189,7 @@ function renderPaperPositions(data) {
       const invested = (t.entry_price||0) * (t.qty||0);
       const retPct = invested ? (t.net_pnl / invested * 100) : 0;
       ch += `<tr>
-        <td><div class="pt-sym">${t.symbol}</div><div class="pt-sub">${t.signal||''}</div></td>
+        <td><div class="pt-sym">${t.symbol}${modeBadge(t.mode)}</div><div class="pt-sub">${t.signal||''}</div></td>
         <td>${t.qty}</td>
         <td>₹${t.entry_price.toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
         <td>₹${(t.exit_price||0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td>
