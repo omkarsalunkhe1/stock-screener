@@ -1,172 +1,187 @@
 # NSE Swing Trade Screener
 
-Screens NSE stocks for 1–3 week swing trade setups targeting ~5% return.
-Powered by Kite Connect API (Zerodha).
+Screens NSE equities for 1–3 week swing setups, scores them against a weighted
+technical model, and validates the model with a walk-forward backtest harness.
+Built on the Kite Connect API (Zerodha), with a FastAPI service, a CLI, and a
+scheduler for daily runs.
+
+> Educational project. Not financial advice — see the disclaimer at the end.
 
 ---
 
-## What it does
+## Why this exists
 
-For each stock in the selected universe (Nifty 50 / 100 / Midcap), it fetches
-60 days of daily OHLCV candles and computes:
+Most retail screeners return a list of stocks matching a handful of hard filters,
+which produces either too many results or none at all, and gives no way to compare
+one candidate against another. This project takes a different approach: every
+candidate is scored on a weighted model across seven indicators, so results are
+ranked rather than merely filtered, and the model itself can be backtested and
+tuned instead of guessed at.
 
-| Indicator        | What it checks                              | Max score |
-|------------------|---------------------------------------------|-----------|
-| RSI (14)         | Momentum building, not overbought (45–68)   | 22        |
-| Volume surge     | Today's vol vs 20-day avg (1.5x+)           | 18        |
-| MACD             | Bullish crossover / positive histogram      | 15        |
-| Price vs 20MA    | Above and within 3% of moving average       | 15        |
-| ADX (14)         | Trend strength ≥ 25                         | 15        |
-| 5D momentum      | Positive short-term price momentum          | 10        |
-| Bollinger band   | Middle-third position (setup zone)          | 5         |
+---
 
-**Target price** = 3× ATR above current price  
-**Stop loss** = 1.5× ATR below current price  
-**Signal**: Strong Buy (≥75), Moderate (≥60), Watch (<60)
+## The scoring model
+
+For each stock in the selected universe (Nifty 50 / 100 / Midcap), the screener
+pulls 60 days of daily OHLCV candles and scores it out of 100:
+
+| Indicator      | What it checks                            | Weight |
+| -------------- | ----------------------------------------- | ------ |
+| RSI (14)       | Momentum building, not overbought (45–68) | 22     |
+| Volume surge   | Today's volume vs 20-day average (≥1.5×)  | 18     |
+| MACD           | Bullish crossover / positive histogram    | 15     |
+| Price vs 20MA  | Above, and within 3% of the average       | 15     |
+| ADX (14)       | Trend strength ≥ 25                       | 15     |
+| 5D momentum    | Positive short-term price momentum        | 10     |
+| Bollinger band | Middle-third position (setup zone)        | 5      |
+
+**Signal bands:** Strong Buy ≥ 75, Moderate ≥ 60, Watch below 60.
+
+**Levels:** target = 3 × ATR above current price, stop loss = 1.5 × ATR below.
+ATR-based levels rather than fixed percentages, so targets adapt to each stock's
+own volatility instead of assuming every name moves the same way.
+
+The weights reflect a bias toward entries where momentum is building but not yet
+extended — RSI carries the most weight and is capped at 68 rather than the usual
+70, and the price-vs-20MA band deliberately rewards proximity to the average
+rather than distance above it, since the strategy targets pullback entries rather
+than breakouts.
+
+---
+
+## Architecture
+
+```
+├── screener.py             Core engine — indicators, scoring, universe handling
+├── server.py               FastAPI REST service
+├── run.py                  CLI runner
+├── scheduler.py            Daily auto-run at 9:30 AM IST
+├── backtest.py             Walk-forward backtest harness with experiment knobs
+├── kite_ticker.py          Kite WebSocket client for live tick streaming
+├── get_token.py            Interactive Kite OAuth helper
+├── app.py                  Config bootstrap and session handling
+│
+├── fundamentals.py         Fundamental data enrichment
+├── news_sentiment.py       News-based sentiment signal
+├── event_risk.py           Event-risk checks (earnings and similar)
+├── portfolio_analysis.py   Holdings and position analysis
+├── swing_paper_broker.py   Paper-trading broker for tracking hypothetical trades
+├── kite_analyzer.py        Kite data analysis helpers
+│
+├── rag_ingest.py           Document ingestion into the vector store
+├── rag_engine.py           Retrieval layer for document-grounded queries
+│
+├── dashboard.py            Local dashboard
+├── swing_trade_screener.html   Standalone frontend
+└── Stock-Screener.sh       Convenience launcher
+```
+
+### Kite Connect integration
+
+Authentication is Kite's two-step OAuth: a login redirect returns a
+`request_token`, which is exchanged for an `access_token` using a SHA-256
+checksum of the API key, request token and secret. **Access tokens expire daily
+at 6 AM IST**, so `get_token.py` exists to make the morning refresh a single
+command rather than a manual dance.
+
+Market data comes from two places: the REST API for historical candles, and a
+WebSocket tick stream (`kite_ticker.py`) for live prices. The ticker maintains a
+single connection and no-ops on reconnect if the access token hasn't changed,
+since Kite limits concurrent connections.
+
+---
+
+## Backtesting
+
+The screening model is only as good as its evidence, so `backtest.py` runs it
+walk-forward over historical data with configurable parameters — entry variant
+(including a pullback-to-MA20 entry), holding period, universe and scoring
+thresholds — so changes to the model can be measured rather than assumed.
+
+```bash
+python backtest.py --years 3 --universe nifty100
+```
 
 ---
 
 ## Setup
 
-### 1. Prerequisites
-
-- Python 3.11+
-- Active Zerodha account
-- Kite Connect subscription (₹500/month + ₹2000/month for historical data)
-- Kite Connect developer account at https://developers.kite.trade
-
-### 2. Install
+**Requirements:** Python 3.11+, an active Zerodha account, and a Kite Connect
+subscription (the historical data add-on is needed for candle data).
 
 ```bash
-cd swing_screener
 pip install -r requirements.txt
 ```
 
-### 3. Configure credentials
+Create a `.env` file in the project root — it is git-ignored and must stay that way:
 
-Create a `.env` file (never commit this):
+```
+KITE_API_KEY=your_api_key
+KITE_API_SECRET=your_api_secret
+KITE_ACCESS_TOKEN=          # filled by get_token.py
+```
+
+Then fetch a token (repeat each morning after 6 AM):
 
 ```bash
-KITE_API_KEY=your_api_key_here
-KITE_API_SECRET=your_api_secret_here
-KITE_ACCESS_TOKEN=   # fill this after login (step 4)
+python get_token.py
 ```
 
-### 4. Get your access token (do this every morning — expires at 6 AM)
-
-**Option A — Manual (one-time setup):**
-
-```python
-from kiteconnect import KiteConnect
-import hashlib
-
-API_KEY = "your_api_key"
-API_SECRET = "your_api_secret"
-
-kite = KiteConnect(api_key=API_KEY)
-print("Login URL:", kite.login_url())
-
-# After logging in, you'll be redirected to your registered URL with ?request_token=xxx
-request_token = input("Paste your request_token: ")
-data = kite.generate_session(request_token, api_secret=API_SECRET)
-print("Access token:", data["access_token"])
-```
-
-**Option B — Via the REST API server:**
-
-```bash
-# Start server
-uvicorn server:app --port 8000
-
-# Get login URL
-curl http://localhost:8000/auth/login-url
-
-# Exchange token (after logging in via the URL above)
-curl -X POST http://localhost:8000/auth/token \
-     -H "Content-Type: application/json" \
-     -d '{"request_token": "xxx"}'
-```
+It prints a login URL, takes the `request_token` from the redirect, exchanges it,
+and writes the result to your local config.
 
 ---
 
 ## Usage
 
-### CLI (simplest)
+**CLI:**
 
 ```bash
-export KITE_API_KEY=xxx
-export KITE_ACCESS_TOKEN=yyy
-
-# Screen Nifty 50 for 5%+ setups
-python run.py
-
-# Screen Midcap for 7%+ setups with tighter filters
+python run.py                                          # Nifty 50, default filters
 python run.py --universe midcap --target 7 --min-score 70
-
-# Save full results to JSON
 python run.py --output today.json
-
-# Full options
 python run.py --help
 ```
 
-### REST API server
+**REST API:**
 
 ```bash
 uvicorn server:app --reload --port 8000
-
-# Screen Nifty 100
-curl "http://localhost:8000/screen?access_token=yyy&universe=nifty100&min_target_pct=5"
-
-# With all filters
-curl "http://localhost:8000/screen?access_token=yyy&universe=nifty50&rsi_min=45&rsi_max=68&min_vol_surge=1.5&min_score=65&min_target_pct=5&top_n=15"
 ```
 
-Interactive docs: http://localhost:8000/docs
+Interactive docs at `http://localhost:8000/docs`.
 
-### Daily scheduler (auto-run at 9:30 AM IST)
+**Scheduler:**
 
 ```bash
-# Keep running in background — screens every trading day at 9:30 AM
-python scheduler.py
+python scheduler.py           # runs every trading day at 9:30 AM IST
+python scheduler.py --once    # single run
+```
 
-# Or run once immediately
-python scheduler.py --once
+Or via cron:
 
-# Or use cron (add to crontab -e)
+```
 30 9 * * 1-5 cd /path/to/screener && python scheduler.py --once >> screener.log 2>&1
 ```
 
-Results are saved to `results/screen_YYYY-MM-DD.json`.
-
 ---
 
-## Connect to the frontend widget
+## Known limitations
 
-The React screener widget in Claude expects a backend at `http://localhost:8000`.
-When you have the server running with a valid access_token, update the widget's
-`BACKEND_URL` constant and switch `USE_LIVE_DATA = true`.
-
----
-
-## Project structure
-
-```
-swing_screener/
-├── screener.py       ← Core engine: indicators + scoring
-├── server.py         ← FastAPI REST server
-├── run.py            ← CLI runner
-├── scheduler.py      ← Daily auto-runner
-├── requirements.txt
-├── .env              ← Your credentials (git-ignored)
-└── results/          ← Daily JSON outputs
-```
+- Access tokens are currently passed as query parameters on some API endpoints.
+  Moving these to an `Authorization` header is the correct fix and is on the list —
+  query strings end up in access logs and browser history.
+- Kite's historical data API is rate-limited, so screening a large universe is
+  sequential and takes time; there is no concurrency layer yet.
+- The scoring weights are hand-tuned against backtest results, not optimised
+  systematically. They are a starting point, not a validated edge.
+- Universe definitions are static rather than pulled from an index-constituent
+  feed, so they drift as indices are rebalanced.
 
 ---
 
 ## Disclaimer
 
-This tool is for **educational purposes only**.  
-It does not constitute financial advice.  
-Past technical patterns do not guarantee future returns.  
-Always do your own research and consult a SEBI-registered investment advisor.
+For educational purposes only. This is not financial advice, and past technical
+patterns do not predict future returns. Do your own research and consult a
+SEBI-registered investment adviser before trading.
